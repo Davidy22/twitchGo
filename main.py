@@ -1,0 +1,1145 @@
+from kivy.core.image import Image as CoreImage
+from kivy.uix.image import Image as kiImage
+from kivy.graphics import Color, Rectangle
+from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
+from kivy.app import App
+from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.label import Label
+import gtp
+import render
+import configparser
+from kivy.clock import Clock
+from twitchio.ext import commands
+from multiprocessing import Process, Manager, Array
+import threading
+from matplotlib import pyplot
+import numpy as np
+from kivy.config import Config
+from time import sleep
+from datetime import date
+from collections import deque
+import tpcdb
+from util import *
+import random
+from textwrap import wrap
+import asyncio
+Config.set('graphics', 'width', '1280')
+Config.set('graphics', 'height', '720')
+
+secrets = configparser.ConfigParser()
+temp = open("secrets.conf")
+secrets.read_file(temp)
+
+db = tpcdb.conn()
+
+bot = commands.Bot(
+		irc_token=secrets['DEFAULT']['oath'],
+		client_id=secrets['DEFAULT']['client_id'],
+		nick=secrets['DEFAULT']['nick'],
+		prefix=secrets['DEFAULT']['prefix'],
+		initial_channels=[secrets['DEFAULT']['channel']]
+	)
+
+class main(FloatLayout):
+	def __init__(self, **kwargs):
+		super(main, self).__init__(**kwargs)
+		global moves
+		global voted
+		self.size = (1280,720)
+		with self.canvas:
+			Color(rgb=(1,1,1))
+			Rectangle(size=self.size, pos=self.pos)
+		self.orientation = "vertical"
+		self.countdown = 0
+		self.counting = False
+		self.hold_message_ticks = 0
+		self.lastmove = None
+		self.board_evaluation = 0
+		
+		#init from file
+		#self.stats = configparser.ConfigParser()
+		#temp = open("game.log")
+		#self.stats.read_file(temp)
+		
+		self.render = kiImage(pos = (-285,-85), height=900, allow_stretch = True, size_hint_y = None)
+		self.add_widget(self.render)
+		self.fish = gtp.GoTextPipe(db.get_level())
+		self.renderer = render.DrawGoPosition()
+		self.moves_string = ""
+		#self.board.set_fen("4r1k1/B4p2/PPPPPPPP/bpbbbpbp/PPPPPPPP/1P2P2P/4q3/6K1 b - - 8 43")
+		#self.is_white = False
+		self.is_white = True
+		self.record = db.get_record()
+		self.round = db.get_round_no()
+		
+		self.custom_init()
+		
+		self.update_board()
+		
+		self.move_ranks = kiImage(pos = (210,223))
+		self.add_widget(self.move_ranks)
+		
+		self.info_text = "GnuGo level: %d" % db.get_level()
+		self.info = Label(text = self.info_text, size_hint_y = 1, size_hint_x = 1, markup = True, text_size = (545, 100), pos = (362, 45), valign = "top")
+		self.add_widget(self.info)
+		
+		self.move_options = Label(text = self.moves_string, markup = True, text_size = (545, 500), pos = (362, -385), valign = "top")
+		self.add_widget(self.move_options)
+		
+		self.set_legal_moves()
+		self.update_history(reset=True)
+		
+		self.thinking_label = Label(text = self.format_text("Thinking...", font_size = 45), markup = True, text_size = (1260, 200), pos = (73500, 160), valign = "top")
+		self.add_widget(self.thinking_label)
+		
+		self.countdown = False
+		self.update_plot(init = True)
+		self.evaluate_position()
+		
+		Clock.schedule_interval(self.tally, 2)
+		Clock.schedule_interval(self.update_info, 1)
+	
+	def format_text(self, text, font_size = 27):
+		return "[color=000000][size=%d][b]%s[/b][/size][/color]" % (font_size, text)
+	
+	def evaluate_position(self):
+		self.board_evaluation = self.fish.estimateScore()
+		
+	def update_history(self, reset = False):		
+		if reset:
+			self.game_history = '[Event "Twitch plays go"]\n[Site "Twitch.tv"]\n[Date "{0}"]\n[Round "{1}"]\n'.format(date.today().strftime("%Y/%m/%d"),self.round)
+			
+			if self.is_white:
+				broadcast(poll_message,"A new game has started, chat is white")
+			else:
+				broadcast(poll_message,"A new game has started, chat is black")
+			#self.game_history["Result"]
+		else:
+			pass # append move to game log if needed
+		hist = self.fish.moveHistory()
+		history.set(hist)
+		
+	def update_info(self, dt = 0, text = None, hold = False):
+		c = custom_game.value
+		if self.hold_message_ticks > 0:
+			self.hold_message_ticks -= dt
+			return
+		if hold:
+			self.hold_message_ticks = 5
+			broadcast(poll_message,text)
+		
+		if text is None:
+			if self.is_white:
+				opp_color = "black"
+			else:
+				opp_color = "white"
+			if not c is None and "challenger" in c:
+				self.info_text = "Opponent: %s is %s\n" % (c["challenger"], opp_color)
+				if not c["turn"]:
+					self.info_text += "Twitch chat's turn"
+				else:
+					self.info_text += "%s's turn" % c["challenger"]
+			else:
+				skill = db.get_level()
+				self.info_text = "Opponent: GnuGo lvl %d is %s" % (skill, opp_color)
+				self.info_text += "\nEval: {0}".format(self.board_evaluation)
+
+			
+			self.info_text += ", Game %d, W:%d, D:%d, L:%d" % (self.round, self.record[0], self.record[1], self.record[2])
+			if self.countdown > 0:
+				self.countdown -= dt
+				if self.countdown < 0:
+					self.countdown = 0
+				self.info_text += "\n%d seconds left to vote this turn" % self.countdown
+			self.info.text =  self.format_text(self.info_text, font_size = 22)
+		else:
+			self.info.text = self.format_text(text, font_size = 22)
+	
+	def update_board(self):
+		image = self.renderer.draw(self.fish.listStones("b"), self.fish.listStones("w"), lastmove = self.lastmove)
+		data = BytesIO()
+		image.save(data, format='png')
+		data.seek(0)
+		im = CoreImage(BytesIO(data.read()), ext='png')
+		self.render.texture = im.texture
+		
+	def update_plot(self, init = False):
+		if init:
+			pyplot.figure(figsize = (3,3))
+			pyplot.bar([], [], align='center', alpha=0.5, width=1.0)
+			pyplot.xticks([], [])
+			pyplot.gca().axes.get_yaxis().set_visible(False)
+		
+		buf = BytesIO()
+		pyplot.savefig(buf, format='png', bbox_inches='tight')
+		buf.seek(0)
+		im = CoreImage(BytesIO(buf.read()), ext='png')
+		self.move_ranks.texture = im.texture
+		
+		if init:
+			pyplot.close()
+
+	def fish_move(self):
+		c = custom_game.value
+		if not c is None and "turn" in c:
+			# Give the turn to a human instead of engine in takeovers
+			c["turn"] = not c["turn"]
+			custom_game.set(c)
+			self.set_legal_moves()
+			return
+		self.update_plot(init = True)
+		self.thinking_label.pos = (735, 180)
+		Clock.schedule_once(self.fish_move_)
+	
+	def fish_move_(self, dt):
+		prev = self.lastmove
+		if self.is_white:
+			self.lastmove = self.fish.genmove("b")
+		else:
+			self.lastmove = self.fish.genmove("w")
+		broadcast(poll_message,"GnuGo went %s" % self.lastmove)
+		self.update_board()
+		self.update_history()
+		if self.lastmove == "resign":
+			#pause before ending game
+			self.set_legal_moves()
+			Clock.schedule_once(self.fish_move__, 3)
+		elif not prev is None and self.lastmove.casefold() == prev.casefold():
+			self.end_game("d")
+		else:
+			self.evaluate_position()
+			self.set_legal_moves()
+		
+		self.thinking_label.pos = (6000, 180)
+	
+	def fish_move__(self, dt):
+		self.end_game("w")
+	
+	def player_move(self, dt):
+		pyplot.clf()
+		highmove = None
+		highvote = -1
+		
+		for move in moves.keys():
+			if moves[move] > highvote:
+				highmove = move
+				highvote = moves[move]
+			if temp == highvote:
+				if highmove is None:
+					continue
+				else:
+					if type(highmove) == str:
+						highmove = [highmove, move]
+					else:
+						highmove.append(move)
+		if highvote <= 0:
+			broadcast(poll_message,"Every move was vetoed, talk it out guys")
+			self.set_legal_moves()
+			self.counting = False
+			return
+		
+		if type(highmove) == list:
+			highmove = random.choice(highmove)
+		
+		broadcast(poll_message,"The chosen move is %s" % highmove)
+		if highmove == "resign":
+			c = custom_game.value
+			self.set_legal_moves(end = True)
+			if not c is None and "turn" in c:
+				if c["turn"]:
+					self.end_game("w")
+				else:
+					self.end_game("l")
+			else:
+				self.end_game("l")
+			return
+		elif highmove == "pass": #TODO: finish double pass logic
+			if self.lastmove == "pass":
+				self.end_game("d")
+			else:
+				self.fish.play(self.is_white, highmove)
+				self.update_board()
+				self.evaluate_position()
+		elif highmove == "abort":
+			self.end_game("a")
+			return
+		else:
+			self.fish.play(self.is_white, highmove)
+			self.update_board()
+			self.evaluate_position()
+		
+		self.update_history()
+		self.update_plot(init = True)
+		self.update_info()
+		self.lastmove = highmove
+		Clock.schedule_once(self.player_move_)
+		
+	def player_move_(self, dt):
+		self.fish_move()
+		self.counting = False
+	
+	def end_game(self, result):
+		self.lastmove = ""
+		self.board_evaluation = 0
+		votes = total_voted.value
+		skill = db.get_level()
+		if not result == "a":
+			self.log(result, skill, votes)
+		c = custom_game.value
+		if result == "w":
+			if not c is None:
+				if "challenger" in c:
+					payout = 2000
+			else:
+				payout = skill * 100
+				
+			for vote in votes:
+				db.change_points(vote, payout)
+			
+			self.update_info(text = "Twitch chat won, %d points awarded to participants" % payout, hold = True)
+			if skill < 10:
+				skill += 1
+				db.set_level(skill)
+		elif result == "d": # TODO: make this not just copied and pasted win/loss logic
+			temp = self.fish.finalScore()
+			if temp[0] == "W":
+				if not c is None:
+					if "challenger" in c:
+						payout = 2000
+				else:
+					payout = skill * 100
+					
+				for vote in votes:
+					db.change_points(vote, payout)
+				
+				self.update_info(text = "Twitch chat won, %d points awarded to participants" % payout, hold = True)
+				if skill < 10:
+					skill += 1
+					db.set_level(skill)
+			else:
+				if skill > 1:
+					skill -= 1
+					db.set_level(skill)
+				if not c is None and "challenger" in c:
+					db.change_points(c["challenger"], 2500)
+				self.update_info(text = "Twitch chat lost", hold = True)
+		elif result == "a":
+			self.update_info(text = "Game aborted", hold = True)
+		else:
+			if skill > 1:
+				skill -= 1
+				db.set_level(skill)
+			if not c is None and "challenger" in c:
+				db.change_points(c["challenger"], 2500)
+			self.update_info(text = "Twitch chat lost", hold = True)
+		
+		total_voted.set(set())
+			
+		self.custom_init()
+		self.fish.reset(db.get_level())
+		self.update_plot(init = True)
+		self.is_white = not self.is_white
+		self.update_history(reset=True)
+		self.set_legal_moves(end = True)
+		self.last_move = ""
+		if not self.is_white:
+			self.evaluate_position()
+			c = custom_game.value
+			if not c is None and "challenger" in c:
+				Clock.schedule_once(self.set_legal_moves, 5)
+			else:
+				Clock.schedule_once(self.fish_move_, 5)
+		else:
+			Clock.schedule_once(self.set_legal_moves, 5)
+		self.counting = False
+		self.evaluate_position()
+		
+		Clock.schedule_once(self.end_game_, 5)
+	
+	def custom_init(self):
+		c = db.new_game()
+		vis = visiting.value
+		if not vis is None:
+			if c is None:
+				c = {"challenger":vis}
+			else:
+				c["challenger"] = vis
+			
+		if c is None:
+			custom_game.set(None)
+			return
+		
+		# 1 v many
+		if "challenger" in c:
+			c["turn"] = not self.is_white
+		
+		if "color" in c:
+			self.is_white = (c["color"] == "w")
+		
+		# custom mode
+		custom_game.set(c)
+	
+	def end_game_(self, dt):
+		self.update_board()
+	
+	def log(self, result, level, voters):
+		self.round += 1
+		#TODO: adjust for gnugo
+		c = custom_game.value
+		if not c is None and "challenger" in c:
+			opp = c["challenger"]
+		else:
+			opp = "GnuGo %d" % db.get_level()
+			
+		if self.is_white:
+			self.game_history += '[White {0}]\n[Black {1}]\n'.format(", ".join(voters), opp)
+		else:
+			self.game_history += '[White {0}]\n[Black {1}]\n'.format(opp, ", ".join(voters))
+		
+		if result == "d":
+			self.game_history += '[Result "1/2-1/2"]\n\n'
+		elif result == "w":
+			if self.is_white:
+				self.game_history += '[Result "1-0"]\n\n'
+			else:
+				self.game_history += '[Result "0-1"]\n\n'
+		else:
+			if self.is_white:
+				self.game_history += '[Result "0-1"]\n\n'
+			else:
+				self.game_history += '[Result "1-0"]\n\n'
+		
+		self.game_history += history.value
+		db.game_end(result, level, len(voters), self.game_history)
+		self.record = db.get_record()
+		
+	def movekey(self, move):
+		if len(move) == 2:
+			return move[0] + "0" + move[1]
+		else:
+			return move
+	
+	def set_legal_moves(self, end = False):
+		moves.clear()
+		count = 1
+		legal = list(self.fish.legalMoves(self.is_white))
+		legal.sort(key=self.movekey)
+		
+		vips = db.get_vip_list()
+		self.moves_string = self.format_text("VIP leaderboard, use !vip to climb", font_size=30)
+		temp = ""
+		for i in range(7):
+			temp += "\n%d. %s - %d points" % (vips[i][2], vips[i][0], vips[i][1])
+		self.moves_string += self.format_text(temp, font_size = 21)
+		self.move_options.text = self.moves_string
+		
+		for move in legal:
+			moves[move.casefold()] = 0
+			
+		moves["resign"] = 0
+		moves["pass"] = 0
+		
+		voted.set(set())
+		vetoed.set(set())
+		
+	def tally_count(self, val):
+		return val[1]
+	
+	def tally(self, dt):
+		data = []
+		if len(voted.value) == 0:
+			return
+		c = custom_game.value
+		if not c is None and "challenger" in c and c["turn"] and not self.counting:
+			self.counting = True
+			self.player_move(0)
+			return
+		
+		for move in moves.keys():
+			data.append((move.upper(), moves[move]))
+		
+		data.sort(key=self.tally_count, reverse = True)
+		labels = []
+		quantity = []
+		for i in data[:5]:
+			labels.append(i[0])
+			quantity.append(i[1])
+		
+		if labels[0] == "abort":
+			Clock.schedule_once(self.player_move)
+			return
+		
+		y = np.arange(len(labels))
+		pyplot.figure(figsize = (3,3))
+		pyplot.bar(y, quantity, align='center', alpha=0.5, width=1.0, color="black")
+		pyplot.xticks(y, labels)
+		pyplot.ylim(ymin=0, ymax=quantity[0])
+		pyplot.gca().axes.get_yaxis().set_visible(False)
+		self.update_plot()
+		pyplot.close()
+		
+		if not self.counting:
+			if visiting.value is None:
+				timer = timers["alone"] + 1
+			else:
+				timer = timers["visit"] + 1
+			Clock.schedule_once(self.player_move, timer)
+			self.countdown = timer
+			self.counting = True
+
+@bot.event
+async def event_ready():
+	print(f"{secrets['DEFAULT']['nick']} is online!")
+	ws = bot._ws
+	await ws.send_privmsg(secrets['DEFAULT']['channel'], f"/me bot now listening")
+	for i in range(5):
+		await asyncio.sleep(1)
+		await bot.event_announce()
+
+@bot.event
+async def event_message(ctx):
+	await bot.handle_commands(ctx)
+	if ctx.author.name == "twitch_plays_go_":
+		return
+	if len(ctx.content) > 10:
+		return
+	
+	# Challenger voting
+	c = custom_game.value
+	processed = ctx.content.casefold()
+	if not c is None and "challenger" in c:
+		if c["turn"]:
+			if ctx.author.name == c["challenger"]:
+				votes = voted.value
+				
+				if processed in moves and not (ctx.author.name in votes):
+					ws = bot._ws
+					if lock.value and str(ctx.channel) == secrets['DEFAULT']['channel'][1:]:
+						await ws.send_privmsg("#%s" % ctx.channel, f"/me Inputs locked on this channel, visit https://www.twitch.tv/%s to play." % visiting.value)
+						return
+					
+					await bot.event_announcenow("%s has gone with move %s." % (c["challenger"], ctx.content))
+					
+					if ctx.content in moves:
+						moves[ctx.content] += 1
+					else:
+						moves[processed] += 1
+					db.change_points(ctx.author.name, 2)
+					votes.add(ctx.author.name)
+					voted.set(votes)
+					for i in range(5):
+						await asyncio.sleep(1)
+						await bot.event_announce()
+			return
+		if ctx.author.name == c["challenger"]:
+			return
+	
+
+	# Add move to tally if valid
+	votes = voted.value
+	if processed in moves and not (ctx.author.name in votes):
+		ws = bot._ws
+		if lock.value and str(ctx.channel) == secrets['DEFAULT']['channel'][1:]:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me Inputs locked on this channel, visit https://www.twitch.tv/%s to play." % visiting.value)
+			return
+		if processed in ["resign", "0"]:
+			if not db.change_points(ctx.author.name, -10):
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me %s, you need 10 points to vote resign" % ctx.author.name)
+				return
+		flag = False
+		if len(votes) == 0:
+			flag = True
+			
+			if visiting.value is None:
+				timer = timers["alone"]
+			else:
+				timer = timers["visit"]
+			await bot.event_announcenow("The first vote has been cast, a move will be made in %d seconds" % timer)
+		
+		if ctx.content in moves:
+			moves[ctx.content] += db.get_player_level(ctx.author.name)
+		else:
+			moves[processed] += db.get_player_level(ctx.author.name)
+		db.change_points(ctx.author.name, 2)
+		votes.add(ctx.author.name)
+		voted.set(votes)
+		t = total_voted.value
+		t.add(ctx.author.name)
+		total_voted.set(t)
+		if flag:
+			if visiting.value is None:
+				await asyncio.sleep(timers["alone"])
+			else:
+				await asyncio.sleep(timers["visit"])
+			await bot.event_announce()
+			for i in range(20):
+				await asyncio.sleep(1)
+				await bot.event_announce()
+
+@bot.command(name="notation")
+async def command_notation(ctx):
+	ws = bot._ws
+	await ws.send_privmsg("#%s" % ctx.channel, f"/me Type your moves as the letter coordinate followed by the number coordinate of the square you want to play on. Type 'pass' to pass the turn, 'resign' to resign.")
+
+@bot.command(name="points")
+async def command_points(ctx):
+	ws = bot._ws
+	params = get_params(ctx.content)
+	if len(params) > 0:
+		name = process_name(params[0])
+		points = db.get_points(name, no_create = True)
+		if points is None:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me Invalid username given.")
+		else:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me %s has %s points." % (name, points))
+	else:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me %s, you have %s points." % (ctx.author.name, db.get_points(ctx.author.name)))
+
+@bot.event
+async def event_log(ctx):
+	ws = bot._ws
+	params = get_params(ctx.content)
+	if len(params) > 0:
+		for line in wrap(db.get_game(get_params(ctx.content)[0]), 490):
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me %s" % line)
+	else:
+		for line in wrap(history.value, 490):
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me %s" % line)
+
+@bot.command(name="log")
+async def command_log(ctx):
+	await bot.event_log(ctx)
+
+@bot.command(name="sgf")
+async def command_sgf(ctx):
+	await bot.event_log(ctx)
+	
+@bot.command(name="gamble")
+async def command_gamble(ctx):
+	ws = bot._ws
+	params = get_params(ctx.content)
+	if len(params) > 0:
+		if params[0] == "all":
+			delta = db.get_points(ctx.author.name)
+		else:
+			try:
+				delta = int(params[0])
+			except:
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me You must choose a number to gamble")
+				return
+		
+		if delta < 69:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me Minimum gamble amount is 69")
+			return
+		
+		if db.change_points(ctx.author.name, -delta):
+			if random.choice([True, False]):
+				db.change_points(ctx.author.name, delta * 2)
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me PogChamp %s wagered %d points and won, now they have %d points PogChamp" % (ctx.author.name, delta, db.get_points(ctx.author.name)))
+			else:
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me BibleThump %s wagered %d points and lost, now they have %d points BibleThump" % (ctx.author.name, delta, db.get_points(ctx.author.name)))
+		else:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me %s, you only have %d points." % (ctx.author.name, db.get_points(ctx.author.name)))
+			
+	else:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me You must choose a number to gamble")
+
+@bot.command(name="rob")
+async def command_rob(ctx):
+	ws = bot._ws
+		
+	current = db.get_points(ctx.author.name)
+	if current < 200:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me You wouldn't have enough points to pay bail, you need at least 200.")
+		return
+	
+	delta = random.randrange(100,200)
+	
+	result = random.randrange(10)
+	if result == 0:
+		db.change_points(ctx.author.name, delta * 10)
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me SirSword %s robbed the bank for %d points! SirMad They now have %d points. SirPrise" % (ctx.author.name, delta*10, db.get_points(ctx.author.name)))
+	else:
+		db.change_points(ctx.author.name, -delta)
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me %s got caught trying to rob a bank. NotLikeThis They had to pay %d points in bail." % (ctx.author.name, delta))
+
+@bot.command(name="roll")
+async def command_roll(ctx):
+	ws = bot._ws
+	params = get_params(ctx.content)
+	if len(params) > 0:
+		if params[0] == "all":
+			delta = db.get_points(ctx.author.name)
+		else:
+			try:
+				delta = int(params[0])
+			except:
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me You must choose a number to gamble")
+				return
+		
+		if delta < 69:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me Minimum gamble amount is 69")
+			return
+		
+		if db.change_points(ctx.author.name, -delta):
+			result = random.randrange(1,101)
+			if result <= 60:
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me %s wagered %d points and rolled %d. Better luck next time :(" % (ctx.author.name, delta, result))
+			elif result <= 90:
+				db.change_points(ctx.author.name, delta * 2)
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me PogChamp %s rolled %d. They won %d points for rolling above 60, now they have %d points PogChamp" % (ctx.author.name, result, delta * 2, db.get_points(ctx.author.name)))
+			elif result <= 95:
+				db.change_points(ctx.author.name, delta * 3)
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me Kreygasm %s rolled %d. They won %d points for rolling above 90, now they have %d points Kreygasm" % (ctx.author.name, result, delta * 3, db.get_points(ctx.author.name)))
+			elif result <= 99:
+				db.change_points(ctx.author.name, delta * 4)
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me PogChamp Kreygasm %s rolled %d. They won %d points for rolling above 95, now they have %d points Kreygasm PogChamp" % (ctx.author.name, result, delta * 4, db.get_points(ctx.author.name)))
+			elif result == 100:
+				db.change_points(ctx.author.name, delta * 10)
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me PogChamp PogChamp PogChamp %s rolled 100! They win a jackpot of %s points! They now have %d points PogChamp PogChamp PogChamp" % (ctx.author.name, delta * 10, db.get_points(ctx.author.name)))
+			
+				
+		else:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me %s, you only have %d points." % (ctx.author.name, db.get_points(ctx.author.name)))
+			
+	else:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me You must choose a number to gamble")
+
+@bot.command(name="levelup")
+async def command_levelup(ctx):
+	ws = bot._ws
+	cur = db.get_player_level(ctx.author.name)
+	cost = 500 * pow(10, cur)
+	if db.change_points(ctx.author.name, -cost):
+		db.level_up(ctx.author.name)
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me %s is now level %d! PogChamp" % (ctx.author.name, cur + 1))
+	else:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me %s, you only have %d points, the next level costs %d." % (ctx.author.name, db.get_points(ctx.author.name), cost))
+
+@bot.command(name="vip")
+async def command_vip(ctx):
+	ws = bot._ws
+	params = get_params(ctx.content)
+	if ctx.author.is_mod:
+		return
+	
+	if len(params) == 0:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Type !vip [number of points] to spend points towards getting a channel VIP badge")
+		return
+
+	try:
+		amount = int(params[0])
+	except:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me You need to specify a number of points to put towards VIP")
+		return
+	
+	if amount < 1:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me You need to specify a positive number of points to put towards VIP")
+		return
+	
+	if db.change_points(ctx.author.name, -amount):
+		result = db.add_vip_points(ctx.author.name, amount)
+		if type(result) == str:
+			await ws.send_privmsg("#%s" % secrets['DEFAULT']['channel'], f"/unvip %s" % result)
+			await ws.send_privmsg("#%s" % secrets['DEFAULT']['channel'], f"/vip %s" % ctx.author.name)
+			if ctx.channel == "twitch_plays_go_":
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me %s is now a channel VIP! PogChamp" % ctx.author.name)
+			else:
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me %s is now a VIP on the bot channel" % ctx.author.name)
+		else:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me %s is now rank %d on the VIP leaderboard with %d vip points." % (ctx.author.name, result[0], result[1]))
+	else:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me You're trying to spend more points on VIP than you have")
+
+@bot.command(name="difficulty")
+async def command_difficulty(ctx):
+	ws = bot._ws
+	params = get_params(ctx.content)
+	try:
+		target = int(params[0])
+	except:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Difficulty needs to be a number from 1-10.")
+		return
+	
+	if target > 10 or target < 1:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Difficulty needs to be a number from 1-10.")
+		return
+	
+	if db.change_points(ctx.author.name, -200):
+		db.add_game_param("level", target, replace = True)
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me GnuGo will be set to level %d next game" % target)
+	else:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me %s, you only have %d points, a difficulty change costs 200." % (ctx.author.name, db.get_points(ctx.author.name)))
+
+@bot.command(name="challenge")
+async def command_challenge(ctx):
+	ws = bot._ws
+	# TODO: Add existence check
+	if db.change_points(ctx.author.name, -100000):
+		db.add_game_param("challenger", ctx.author.name)
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me %s will fight the rest of twitch chat next game. Bring it!" % ctx.author.name)
+	else:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me %s, you only have %d points, a challenge costs 100000." % (ctx.author.name, db.get_points(ctx.author.name)))
+
+@bot.command(name="shop")
+async def command_shop(ctx):
+	# Make flexible, add more
+	ws = bot._ws
+	await ws.send_privmsg("#%s" % ctx.channel, f"/me Buy things with points: !veto, !levelup, !vip, !difficulty, !challenge")
+
+@bot.command(name="song")
+async def command_song(ctx):
+	ws = bot._ws
+	await ws.send_privmsg("#%s" % ctx.channel, f"/me Music courtesy of Chilled Cow: https://www.youtube.com/c/chilledcow")
+
+@bot.command(name="commands")
+async def command_commands(ctx):
+	ws = bot._ws
+	await ws.send_privmsg("#%s" % ctx.channel, f"/me See the about section below the bot's stream for full list of commands.")
+
+@bot.command(name="claim")
+async def command_claim(ctx):
+	ws = bot._ws
+	result = db.get_daily_status(ctx.author.name)
+	if result is None or result == True:
+		db.change_points(ctx.author.name, 69)
+		db.reset_account_date(ctx.author.name)
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me 69 points have been added to your account.")
+	else:
+		result = 79200 - result
+		hours = int(result /3600)
+		minutes = int(result / 60) % 60
+		seconds = result % 60
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me You have %d:%d:%d until you can claim more free points." % (hours, minutes, seconds))
+		
+@bot.command(name="give")
+async def command_give(ctx):
+	ws = bot._ws
+	params = get_params(ctx.content)
+	if len(params) > 1:
+		name = process_name(params[0])
+		if name == ctx.author.name:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me Why are you trying to give yourself stuff?")
+			return
+
+		try:
+			amount = int(params[1])
+			if amount <= 0:
+				return
+		except:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me Invalid number given.")
+			return
+		points = db.get_points(name, no_create = True)
+		if points is None:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me Invalid username given.")
+		else:
+			
+			if db.change_points(ctx.author.name, -amount):
+				db.change_points(name, amount)
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me %s now has %s points." % (name, db.get_points(name)))
+			else:
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me You don't have that many points to give DansGame")
+
+
+@bot.command(name="duel")
+async def command_duel(ctx):
+	ws = bot._ws
+	params = get_params(ctx.content)
+	try:
+		victim = process_name(params[0])
+	except:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Name a person to duel and the number of points you want to wager")
+		return
+		
+	try:
+		amount = int(params[1])
+	except:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me You must provide a number to wager")
+		return
+	
+	if amount < 69:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me You must wager at least 69 points")
+		return
+	
+	try:
+		if db.get_points(ctx.author.name, no_create = True) >= amount and db.get_points(victim, no_create = True) >= amount:
+			if db.challenge(ctx.author.name, victim, amount):
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me %s, %s wants to duel you for %d points. !accept or !reject, duel expires in 15 minutes." % (victim, ctx.author.name, amount))
+			else:
+				await ws.send_privmsg("#%s" % ctx.channel, f"/me Each person can have at most one outgoing and one incoming challenge")
+		else:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me You both need to have enough points to wager")
+	except:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me You both need to have enough points to wager")
+
+@bot.command(name="accept")
+async def command_accept(ctx):
+	ws = bot._ws
+	result = db.accept_challenge(ctx.author.name)
+	if not result is None:
+		if db.get_points(result[0]) < result[2]:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me %s does not have enough points for the duel right now" % result[0])
+			return
+		if db.get_points(result[1]) < result[2]:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me %s does not have enough points for the duel right now" % result[1])
+			return
+
+		if random.choice([True, False]):
+			db.change_points(result[0], result[2])
+			db.change_points(result[1], -result[2])
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me %s won the duel with %s and took %d of their lunch money!" % (result[0], result[1], result[2]))
+		else:
+			db.change_points(result[0], -result[2])
+			db.change_points(result[1], result[2])
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me %s won the duel with %s and took %d of their lunch money!" % (result[1], result[0], result[2]))
+		db.delete_challenge(ctx.author.name)
+
+@bot.command(name="reject")
+async def command_reject(ctx):
+	db.delete_challenge(ctx.author.name)
+
+@bot.command(name="joinstream")
+async def command_joinstream(ctx):
+	ws = bot._ws
+	if ctx.author.is_mod:
+		cur = visiting.value
+		if cur is None:
+			db.change_points(ctx.author.name, 5)
+			await bot.join_channels(["#%s" % ctx.author.name])
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me Now monitoring %s's stream chat, type !leavestream to have me leave." % ctx.author.name)
+			await ws.send_privmsg("#%s" % ctx.author.name, f"/me Go bot has arrived in your stream chat, type !lock to lock moves on the bot channel, type !leavestream to have me leave.")
+			visiting.set(ctx.author.name)
+			await bot.event_abort(ctx, True)
+			lock.set(False)
+		else:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me %s is using the stream tool currently" % cur)
+	else:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Only mods can use joinstream. If you're a streamer looking to use the bot in your chat, whisper me and I can make you a mod.")
+	
+@bot.command(name="leavestream")
+async def command_leavestream(ctx):
+	ws = bot._ws
+	if visiting.value == ctx.author.name:
+		lock.set(False)
+		await bot.part_channels(["#%s" % ctx.author.name])
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me No longer monitoring %s's chat" % ctx.author.name)
+		visiting.set(None)
+		await bot.event_abort(ctx, True)
+	else:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me I wasn't connected to your stream anyways")
+
+
+@bot.command(name="boot")
+async def command_boot(ctx):
+	ws = bot._ws
+	if ctx.author.name == "twitch_plays_go_":
+		if visiting.value is None:
+			return
+		else:
+			lock.set(False)
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me Disconnecting from channel")
+			await bot.part_channels([visiting.value])
+			visiting.set(None)
+			await bot.event_abort(ctx, True)
+
+
+@bot.command(name="send")
+async def command_send(ctx):
+	ws = bot._ws
+	params = get_params(ctx.content)
+	if ctx.author.name == "twitch_plays_go_":
+		if not visiting.value is None:
+			await bot.part_channels([visiting.value])
+		await bot.join_channels(["#%s" % params[0]])
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Now monitoring %s's stream chat, type !leavestream to have me leave." % params[0])
+		await ws.send_privmsg("#%s" % params[0], f"/me Go bot has arrived in your stream chat, type !leavestream to have me leave.")
+		visiting.set(params[0])
+		await bot.event_abort(ctx, True)
+
+@bot.command(name="visiting")
+async def command_visiting(ctx):
+	ws = bot._ws
+	if visiting.value is None:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Not visiting any channel currently.")
+	else:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Currently monitoring %s's chat" % visiting.value)
+		
+@bot.command(name="m")
+async def command_m(ctx):
+	ws = bot._ws
+	await ws.send_privmsg("#%s" % ctx.channel, f"/me This isn't saberduder's stream, just type the move, no spaces.")
+	
+@bot.command(name="move")
+async def command_move(ctx):
+	ws = bot._ws
+	await ws.send_privmsg("#%s" % ctx.channel, f"/me This isn't saberduder's stream, just type the move, no spaces.")
+	
+@bot.command(name="abort")
+async def command_abort(ctx):
+	await bot.event_abort(ctx, False)
+
+@bot.command(name="veto")
+async def command_veto(ctx):
+	ws = bot._ws
+	if lock.value and str(ctx.channel) == secrets['DEFAULT']['channel'][1:]:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Inputs locked on this channel, visit https://www.twitch.tv/%s to play." % visiting.value)
+		return
+	params = get_params(ctx.content)
+	try:
+		veto = params[0]
+		processed = veto.replace("+", "").replace("#","").casefold().replace("x","")
+	except:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Specify a move to veto")
+		return
+	
+	c = custom_game.value
+	if not c is None and "challenger" in c:
+		if c["turn"]:
+			return
+		if ctx.author.name == c["challenger"]:
+			return
+	
+	# Remove move from tally if valid
+	votes = voted.value
+	vetoes = vetoed.value
+	if processed in moves and not (ctx.author.name in vetoes) and not len(votes) == 0:
+		if db.change_points(ctx.author.name, -30):
+			if veto in moves:
+				moves[veto] -= db.get_player_level(ctx.author.name)
+			else:
+				moves[processed] -= db.get_player_level(ctx.author.name)
+			vetoes.add(ctx.author.name)
+			vetoed.set(vetoes)
+		else:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me You need at least 30 points to veto a move")
+
+@bot.command(name="changetimer")
+async def command_changetimer(ctx):
+	ws = bot._ws
+	params = get_params(ctx.content)
+	
+	temp = visiting.value
+	if temp is None:
+		if not ctx.author.name == "twitch_plays_go_":
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me Only the channel owner can change the vote timer")
+			return
+	else:
+		if not ctx.author.name in ["twitch_plays_go_", temp]:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me Only the channel owner or %s can change the vote timer" % temp)
+			return
+	
+	try:
+		new = int(params[0])
+	except:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me You must specify a number for the new timer duration")
+		return
+	
+	if new < 1:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Time must be a positive number")
+		return
+	
+	if temp is None:
+		timers["alone"] = new
+	else:
+		timers["visit"] = new
+	await ws.send_privmsg("#%s" % ctx.channel, f"/me Vote clock is now %d seconds" % new)
+
+
+@bot.command(name="lock")
+async def command_lock(ctx):
+	ws = bot._ws
+	
+	temp = visiting.value
+	if temp is None:
+		return
+	else:
+		if not ctx.author.name in ["twitch_plays_go_", temp]:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me Only the channel owner or %s can use !lock" % temp)
+			return
+	new = not lock.value
+	lock.set(new)
+	
+	if new:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Bot channel locked")
+	else:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Bot channel unlocked")
+
+@bot.command(name="leaderboard")
+async def command_leaderboard(ctx):
+	ws = bot._ws
+	params = get_params(ctx.content)
+	
+	try:
+		place = int(params[0])
+		if place < 1:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me That's not a valid position number on the leaderboard")
+			return
+		
+		result = db.get_vip_list()[place-1]
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Number %d on the VIP leaderboard is %s with %d points spent" % (place, result[0], result[1]))
+	except:
+		try:
+			username = process_name(params[0])
+		except:
+			username = ctx.author.name
+		result = db.get_vip_rank(username)
+		if result[1] == 0:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me %s isn't on the leaderboard yet. Put points into !vip to rank up to get a VIP badge" % username)
+		else:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me %s is number %d on the VIP leaderboard with %d points spent" % (username, result[0], result[1]))
+	
+@bot.event
+async def event_abort(ctx, override):
+	ws = bot._ws
+	if ctx.author.name == "twitch_plays_go_" or override:
+		moves.clear()
+		moves["abort"] = 1
+		notation_moves.set({"abort":["abort"]})
+		voted.set("twitch_plays_go_")
+		for i in range(4):
+			await asyncio.sleep(1)
+			await bot.event_announce()
+
+@bot.event
+async def event_announce():
+	ws = bot._ws
+	temp = poll_message.value
+	if not temp is None:
+		for i in temp:
+			await ws.send_privmsg(secrets['DEFAULT']['channel'], f"/me %s" % i)
+			if not visiting.value is None:
+				await ws.send_privmsg("#%s" % visiting.value, f"/me %s" % i)
+		poll_message.set(None)
+
+@bot.event
+async def event_announcenow(message):
+	ws = bot._ws
+	await ws.send_privmsg(secrets['DEFAULT']['channel'], f"/me %s" % message)
+	if not visiting.value is None:
+		await ws.send_privmsg("#%s" % visiting.value, f"/me %s" % message)
+#TODO: Autodelayed chat for visiting
+class goApp(App):
+	def build(self):
+		return main()
+
+if __name__ == '__main__':
+	m = Manager()
+	moves = m.dict()
+	voted = m.Value(set, set())
+	vetoed = m.Value(set, set())
+	total_voted = m.Value(set, set())
+	history = m.Value(str, "")
+	custom_game = m.Value(dict, None)
+	visiting = m.Value(str, None)
+	poll_message = m.Value(list, [])
+	lock = m.Value(bool, False) # Not that kind of lock
+	timers = m.dict()
+	timers["visit"] = 30
+	timers["alone"] = 7
+	p1 = Process(target=bot.run)
+	p2 = Process(target=goApp().run)
+	p1.start()
+	p2.start()
+	p1.join()
+	p2.join()
