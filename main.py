@@ -68,8 +68,8 @@ class main(FloatLayout):
 		self.renderer = render.DrawGoPosition()
 		self.moves_string = ""
 		#self.board.set_fen("4r1k1/B4p2/PPPPPPPP/bpbbbpbp/PPPPPPPP/1P2P2P/4q3/6K1 b - - 8 43")
-		#self.is_white = False
-		self.is_white = True
+		#self.is_black = False
+		self.is_black = True
 		self.record = db.get_record()
 		self.round = db.get_round_no()
 		
@@ -81,7 +81,7 @@ class main(FloatLayout):
 		self.add_widget(self.move_ranks)
 		
 		self.info_text = "GnuGo level: %d" % db.get_level()
-		self.info = Label(text = self.info_text, size_hint_y = 1, size_hint_x = 1, markup = True, text_size = (545, 100), pos = (362, 45), valign = "top")
+		self.info = Label(text = self.info_text, size_hint_y = 1, size_hint_x = 1, markup = True, text_size = (545, 100), pos = (370, 45), valign = "top")
 		self.add_widget(self.info)
 		
 		self.move_options = Label(text = self.moves_string, markup = True, text_size = (545, 500), pos = (362, -385), valign = "top")
@@ -110,10 +110,10 @@ class main(FloatLayout):
 		if reset:
 			self.game_history = '[Event "Twitch plays go"]\n[Site "Twitch.tv"]\n[Date "{0}"]\n[Round "{1}"]\n'.format(date.today().strftime("%Y/%m/%d"),self.round)
 			
-			if self.is_white:
-				broadcast(poll_message,"A new game has started, chat is white")
-			else:
+			if self.is_black:
 				broadcast(poll_message,"A new game has started, chat is black")
+			else:
+				broadcast(poll_message,"A new game has started, chat is white")
 			#self.game_history["Result"]
 		else:
 			pass # append move to game log if needed
@@ -130,10 +130,10 @@ class main(FloatLayout):
 			broadcast(poll_message,text)
 		
 		if text is None:
-			if self.is_white:
-				opp_color = "black"
-			else:
+			if self.is_black:
 				opp_color = "white"
+			else:
+				opp_color = "black"
 			if not c is None and "challenger" in c:
 				self.info_text = "Opponent: %s is %s\n" % (c["challenger"], opp_color)
 				if not c["turn"]:
@@ -157,7 +157,7 @@ class main(FloatLayout):
 			self.info.text = self.format_text(text, font_size = 22)
 	
 	def update_board(self):
-		image = self.renderer.draw(self.fish.listStones("b"), self.fish.listStones("w"), lastmove = self.lastmove)
+		image = self.renderer.draw(self.fish.listStones("w"), self.fish.listStones("b"), lastmove = self.lastmove)
 		data = BytesIO()
 		image.save(data, format='png')
 		data.seek(0)
@@ -194,7 +194,7 @@ class main(FloatLayout):
 	
 	def fish_move_(self, dt):
 		prev = self.lastmove
-		if self.is_white:
+		if self.is_black:
 			self.lastmove = self.fish.genmove("b")
 		else:
 			self.lastmove = self.fish.genmove("w")
@@ -234,6 +234,7 @@ class main(FloatLayout):
 					else:
 						highmove.append(move)
 		if highvote <= 0:
+			print(moves)
 			broadcast(poll_message,"Every move was vetoed, talk it out guys")
 			self.set_legal_moves()
 			self.counting = False
@@ -258,14 +259,14 @@ class main(FloatLayout):
 			if self.lastmove == "pass":
 				self.end_game("d")
 			else:
-				self.fish.play(self.is_white, highmove)
+				self.fish.play(self.is_black, highmove)
 				self.update_board()
 				self.evaluate_position()
 		elif highmove == "abort":
 			self.end_game("a")
 			return
 		else:
-			self.fish.play(self.is_white, highmove)
+			self.fish.play(self.is_black, highmove)
 			self.update_board()
 			self.evaluate_position()
 		
@@ -292,7 +293,7 @@ class main(FloatLayout):
 				if "challenger" in c:
 					payout = 2000
 			else:
-				payout = skill * 100
+				payout = skill * 200
 				
 			for vote in votes:
 				db.change_points(vote, payout)
@@ -308,7 +309,7 @@ class main(FloatLayout):
 					if "challenger" in c:
 						payout = 2000
 				else:
-					payout = skill * 100
+					payout = skill * 200
 					
 				for vote in votes:
 					db.change_points(vote, payout)
@@ -339,11 +340,11 @@ class main(FloatLayout):
 		self.custom_init()
 		self.fish.reset(db.get_level())
 		self.update_plot(init = True)
-		self.is_white = not self.is_white
+		self.is_black = not self.is_black
 		self.update_history(reset=True)
 		self.set_legal_moves(end = True)
 		self.last_move = ""
-		if not self.is_white:
+		if not self.is_black:
 			self.evaluate_position()
 			c = custom_game.value
 			if not c is None and "challenger" in c:
@@ -372,10 +373,10 @@ class main(FloatLayout):
 		
 		# 1 v many
 		if "challenger" in c:
-			c["turn"] = not self.is_white
+			c["turn"] = not self.is_black
 		
 		if "color" in c:
-			self.is_white = (c["color"] == "w")
+			self.is_black = (c["color"] == "w")
 		
 		# custom mode
 		custom_game.set(c)
@@ -392,7 +393,7 @@ class main(FloatLayout):
 		else:
 			opp = "GnuGo %d" % db.get_level()
 			
-		if self.is_white:
+		if self.is_black:
 			self.game_history += '[White {0}]\n[Black {1}]\n'.format(", ".join(voters), opp)
 		else:
 			self.game_history += '[White {0}]\n[Black {1}]\n'.format(opp, ", ".join(voters))
@@ -400,12 +401,12 @@ class main(FloatLayout):
 		if result == "d":
 			self.game_history += '[Result "1/2-1/2"]\n\n'
 		elif result == "w":
-			if self.is_white:
+			if self.is_black:
 				self.game_history += '[Result "1-0"]\n\n'
 			else:
 				self.game_history += '[Result "0-1"]\n\n'
 		else:
-			if self.is_white:
+			if self.is_black:
 				self.game_history += '[Result "0-1"]\n\n'
 			else:
 				self.game_history += '[Result "1-0"]\n\n'
@@ -423,16 +424,16 @@ class main(FloatLayout):
 	def set_legal_moves(self, end = False):
 		moves.clear()
 		count = 1
-		legal = list(self.fish.legalMoves(self.is_white))
+		legal = list(self.fish.legalMoves(self.is_black))
 		legal.sort(key=self.movekey)
 		
-		vips = db.get_vip_list()
-		self.moves_string = self.format_text("VIP leaderboard, use !vip to climb", font_size=30)
-		temp = ""
-		for i in range(7):
-			temp += "\n%d. %s - %d points" % (vips[i][2], vips[i][0], vips[i][1])
-		self.moves_string += self.format_text(temp, font_size = 21)
-		self.move_options.text = self.moves_string
+		#vips = db.get_vip_list()
+		#self.moves_string = self.format_text("VIP leaderboard, use !vip to climb", font_size=30)
+		#temp = ""
+		#for i in range(7):
+		#	temp += "\n%d. %s - %d points" % (vips[i][2], vips[i][0], vips[i][1])
+		#self.moves_string += self.format_text(temp, font_size = 21)
+		#self.move_options.text = self.moves_string
 		
 		for move in legal:
 			moves[move.casefold()] = 0
