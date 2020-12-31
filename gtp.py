@@ -87,7 +87,7 @@ class GoTextPipe(GoTextBase):
 	Start a new instance of gnugo and communicate with it via stdin/stdout.
 	"""
 	def __init__(self, level = 5):
-		args = 'gnugo --mode gtp --level {0} --boardsize 4'.format(level) #undo
+		args = 'gnugo --mode gtp --level {0}'.format(level) #undo
 		self.gnugo = subprocess.Popen(args.split(), universal_newlines=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, encoding="utf8")
 
 	def _send(self, data):

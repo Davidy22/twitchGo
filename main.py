@@ -1095,7 +1095,6 @@ async def event_abort(ctx, override):
 	if ctx.author.name == "twitch_plays_go_" or override:
 		moves.clear()
 		moves["abort"] = 1
-		notation_moves.set({"abort":["abort"]})
 		voted.set("twitch_plays_go_")
 		for i in range(4):
 			await asyncio.sleep(1)
@@ -1136,7 +1135,7 @@ if __name__ == '__main__':
 	lock = m.Value(bool, False) # Not that kind of lock
 	timers = m.dict()
 	timers["visit"] = 30
-	timers["alone"] = 7
+	timers["alone"] = 4
 	p1 = Process(target=bot.run)
 	p2 = Process(target=goApp().run)
 	p1.start()
