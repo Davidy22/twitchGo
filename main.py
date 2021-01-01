@@ -304,7 +304,7 @@ class main(FloatLayout):
 				db.set_level(skill)
 		elif result == "d": # TODO: make this not just copied and pasted win/loss logic
 			temp = self.fish.finalScore()
-			if temp[0] == "W":
+			if (temp[0] == "W" and not self.is_black) or (temp[0] == "B" and self.is_black) :
 				if not c is None:
 					if "challenger" in c:
 						payout = 2000
