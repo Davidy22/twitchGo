@@ -285,7 +285,7 @@ class main(FloatLayout):
 		self.board_evaluation = 0
 		votes = total_voted.value
 		skill = db.get_level()
-		if not result == "a":
+		if not result in ["a", "d"]:
 			self.log(result, skill, votes)
 		c = custom_game.value
 		if result == "w":
@@ -304,7 +304,8 @@ class main(FloatLayout):
 				db.set_level(skill)
 		elif result == "d": # TODO: make this not just copied and pasted win/loss logic
 			temp = self.fish.finalScore()
-			if (temp[0] == "W" and not self.is_black) or (temp[0] == "B" and self.is_black) :
+			if (temp[0] == "W" and not self.is_black) or (temp[0] == "B" and self.is_black):
+				self.log("w", skill, votes)
 				if not c is None:
 					if "challenger" in c:
 						payout = 2000
@@ -319,6 +320,7 @@ class main(FloatLayout):
 					skill += 1
 					db.set_level(skill)
 			else:
+				self.log("l", skill, votes)
 				if skill > 1:
 					skill -= 1
 					db.set_level(skill)
