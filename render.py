@@ -29,6 +29,7 @@ class DrawGoPosition(object):
 	
 	def __init__(self):
 		self.buf = io.BytesIO()
+		self.fig = None
 		
 	def convertLetter(self, letter):
 		return letters[letter].value
@@ -37,10 +38,12 @@ class DrawGoPosition(object):
 		return letters(number).name.upper()
 	
 	def draw(self, black, white, lastmove = None):
+		if not self.fig is None:
+			plt.close()
 		# create a 8" x 8" board
-		fig = plt.figure(figsize=[8,8])
+		self.fig = plt.figure(figsize=[8,8])
 
-		ax = fig.add_subplot(111)
+		ax = self.fig.add_subplot(111)
 
 		# draw the grid
 		for x in range(19):

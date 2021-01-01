@@ -1136,7 +1136,7 @@ if __name__ == '__main__':
 	lock = m.Value(bool, False) # Not that kind of lock
 	timers = m.dict()
 	timers["visit"] = 30
-	timers["alone"] = 4
+	timers["alone"] = 1
 	p1 = Process(target=bot.run)
 	p2 = Process(target=goApp().run)
 	p1.start()
