@@ -64,7 +64,7 @@ class main(FloatLayout):
 		
 		self.render = kiImage(pos = (-285,-85), height=900, allow_stretch = True, size_hint_y = None)
 		self.add_widget(self.render)
-		self.fish = gtp.GoTextPipe(db.get_level())
+		self.fish = gtp.GoTextPipe()
 		self.renderer = render.DrawGoPosition()
 		self.moves_string = ""
 		#self.board.set_fen("4r1k1/B4p2/PPPPPPPP/bpbbbpbp/PPPPPPPP/1P2P2P/4q3/6K1 b - - 8 43")
@@ -80,7 +80,7 @@ class main(FloatLayout):
 		self.move_ranks = kiImage(pos = (210,223))
 		self.add_widget(self.move_ranks)
 		
-		self.info_text = "GnuGo level: %d" % db.get_level()
+		self.info_text = "Katago level: %d" % db.get_level()
 		self.info = Label(text = self.info_text, size_hint_y = 1, size_hint_x = 1, markup = True, text_size = (545, 100), pos = (370, 45), valign = "top")
 		self.add_widget(self.info)
 		
@@ -142,11 +142,11 @@ class main(FloatLayout):
 					self.info_text += "%s's turn" % c["challenger"]
 			else:
 				skill = db.get_level()
-				self.info_text = "Opponent: GnuGo lvl %d is %s" % (skill, opp_color)
+				self.info_text = "Opponent: Katago lvl %d is %s" % (skill, opp_color) # change to stones
 				self.info_text += "\nEval: {0}".format(self.board_evaluation)
 
 			
-			self.info_text += ", Game %d, W:%d, D:%d, L:%d" % (self.round, self.record[0], self.record[1], self.record[2])
+			self.info_text += ", Game %d, W:%d, L:%d" % (self.round, self.record[0], self.record[1])
 			if self.countdown > 0:
 				self.countdown -= dt
 				if self.countdown < 0:
@@ -157,7 +157,7 @@ class main(FloatLayout):
 			self.info.text = self.format_text(text, font_size = 22)
 	
 	def update_board(self):
-		image = self.renderer.draw(self.fish.listStones("w"), self.fish.listStones("b"), lastmove = self.lastmove)
+		image = self.renderer.draw(self.fish.listStones("b"), self.fish.listStones("w"), lastmove = self.lastmove)
 		data = BytesIO()
 		image.save(data, format='png')
 		data.seek(0)
@@ -195,10 +195,10 @@ class main(FloatLayout):
 	def fish_move_(self, dt):
 		prev = self.lastmove
 		if self.is_black:
-			self.lastmove = self.fish.genmove("b")
-		else:
 			self.lastmove = self.fish.genmove("w")
-		broadcast(poll_message,"GnuGo went %s" % self.lastmove)
+		else:
+			self.lastmove = self.fish.genmove("b")
+		broadcast(poll_message,"Katago went %s" % self.lastmove)
 		self.update_board()
 		self.update_history()
 		if self.lastmove == "resign":
@@ -234,11 +234,11 @@ class main(FloatLayout):
 					else:
 						highmove.append(move)
 		if highvote <= 0:
-			print(moves)
-			broadcast(poll_message,"Every move was vetoed, talk it out guys")
-			self.set_legal_moves()
-			self.counting = False
-			return
+			if not highmove in moves.keys():
+				broadcast(poll_message,"Every move was vetoed, talk it out guys")
+				self.set_legal_moves()
+				self.counting = False
+				return
 		
 		if type(highmove) == list:
 			highmove = random.choice(highmove)
@@ -303,7 +303,7 @@ class main(FloatLayout):
 				skill += 1
 				db.set_level(skill)
 		elif result == "d": # TODO: make this not just copied and pasted win/loss logic
-			temp = self.fish.finalScore()
+			temp = self.fish.estimateScore()
 			if (temp[0] == "W" and not self.is_black) or (temp[0] == "B" and self.is_black):
 				self.log("w", skill, votes)
 				if not c is None:
@@ -340,7 +340,7 @@ class main(FloatLayout):
 		total_voted.set(set())
 			
 		self.custom_init()
-		self.fish.reset(db.get_level())
+		self.fish.reset()
 		self.update_plot(init = True)
 		self.is_black = not self.is_black
 		self.update_history(reset=True)
@@ -388,12 +388,12 @@ class main(FloatLayout):
 	
 	def log(self, result, level, voters):
 		self.round += 1
-		#TODO: adjust for gnugo
+		#TODO: adjust for Katago
 		c = custom_game.value
 		if not c is None and "challenger" in c:
 			opp = c["challenger"]
 		else:
-			opp = "GnuGo %d" % db.get_level()
+			opp = "Katago %d" % db.get_level()
 			
 		if self.is_black:
 			self.game_history += '[White {0}]\n[Black {1}]\n'.format(", ".join(voters), opp)
@@ -770,8 +770,8 @@ async def command_difficulty(ctx):
 		return
 	
 	if db.change_points(ctx.author.name, -200):
-		db.add_game_param("level", target, replace = True)
-		await ws.send_privmsg("#%s" % ctx.channel, f"/me GnuGo will be set to level %d next game" % target)
+		db.add_game_param("level", target, replace = True) # change to stones
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Katago will be set to level %d next game" % target)
 	else:
 		await ws.send_privmsg("#%s" % ctx.channel, f"/me %s, you only have %d points, a difficulty change costs 200." % (ctx.author.name, db.get_points(ctx.author.name)))
 

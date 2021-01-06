@@ -40,9 +40,8 @@ class conn():
 		f.close()
 	
 	def get_record(self):
-		# Get [wins, draws, losses]
+		# Get [wins, losses]
 		return (self.c.execute('select count(*) from games where result = "w"').fetchall()[0][0],
-		self.c.execute('select count(*) from games where result = "d"').fetchall()[0][0],
 		self.c.execute('select count(*) from games where result = "l"').fetchall()[0][0])
 	
 	def get_game(self, gameid):
@@ -55,8 +54,6 @@ class conn():
 				return " ".join(f.readlines()[8:]) + " Win"
 			elif temp[1] == "l":
 				return " ".join(f.readlines()[8:]) + " Loss"
-			else:
-				return " ".join(f.readlines()[8:]) + " Draw"
 				
 			
 		except:
