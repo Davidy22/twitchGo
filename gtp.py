@@ -14,7 +14,7 @@ class GoTextPipe(object):
 		self.board = b()
 		args = './katago gtp'
 		self.engine = subprocess.Popen(args.split(), universal_newlines=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, encoding="utf8")
-		self._send('boardsize 5')
+		#self._send('boardsize 5')
 
 	def boardsize(self, size):
 		return self._send('boardsize {0}'.format(size)).strip()
@@ -31,12 +31,8 @@ class GoTextPipe(object):
 			return "B+{0}".format(abs(temp))
 
 	def genmove(self, color):
-		print(self.showboard())
-		print(self.board.board)
 		temp = self._send('genmove {0}'.format(color)).strip()
 		self.board.notatePlay(temp, color)
-		print(self.showboard())
-		print(self.board.board)
 		return temp
 
 	def play(self, color, position):

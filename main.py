@@ -83,7 +83,7 @@ class main(FloatLayout):
 		self.add_widget(self.move_ranks)
 		
 		self.info_text = "Katago level: %d" % db.get_level()
-		self.info = Label(text = self.info_text, size_hint_y = 1, size_hint_x = 1, markup = True, text_size = (545, 100), pos = (370, 45), valign = "top")
+		self.info = Label(text = self.info_text, size_hint_y = 1, size_hint_x = 1, markup = True, text_size = (545, 200), pos = (370, -15), valign = "top")
 		self.add_widget(self.info)
 		
 		self.move_options = Label(text = self.moves_string, markup = True, text_size = (545, 500), pos = (362, -385), valign = "top")
@@ -283,8 +283,6 @@ class main(FloatLayout):
 		Clock.schedule_once(self.player_move_)
 		
 	def player_move_(self, dt):
-		print("Handi")
-		print(self.handicap_remaining)
 		if self.handicap_remaining > 0:
 			self.set_legal_moves()
 			self.handicap_remaining -= 1
@@ -455,7 +453,6 @@ class main(FloatLayout):
 			
 		moves["resign"] = 0
 		moves["pass"] = 0
-		print(moves)
 		voted.set(set())
 		vetoed.set(set())
 		
@@ -1151,7 +1148,7 @@ if __name__ == '__main__':
 	lock = m.Value(bool, False) # Not that kind of lock
 	timers = m.dict()
 	timers["visit"] = 30
-	timers["alone"] = 1
+	timers["alone"] = 6
 	p1 = Process(target=bot.run)
 	p2 = Process(target=goApp().run)
 	p1.start()
