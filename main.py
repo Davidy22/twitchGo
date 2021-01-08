@@ -238,11 +238,10 @@ class main(FloatLayout):
 					else:
 						highmove.append(move)
 		if highvote <= 0:
-			if not highmove in moves.keys():
-				broadcast(poll_message,"Every move was vetoed, talk it out guys")
-				self.set_legal_moves()
-				self.counting = False
-				return
+			broadcast(poll_message,"Every move was vetoed, talk it out guys")
+			self.set_legal_moves()
+			self.counting = False
+			return
 		
 		if type(highmove) == list:
 			highmove = random.choice(highmove)
@@ -280,7 +279,6 @@ class main(FloatLayout):
 		self.update_plot(init = True)
 		self.update_info()
 		self.lastmove = highmove
-		self.counting = False
 		Clock.schedule_once(self.player_move_)
 		
 	def player_move_(self, dt):
@@ -289,6 +287,7 @@ class main(FloatLayout):
 			self.handicap_remaining -= 1
 		else:
 			self.fish_move()
+		self.counting = False
 	
 	def end_game(self, result):
 		self.lastmove = ""
