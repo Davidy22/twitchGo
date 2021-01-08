@@ -280,6 +280,7 @@ class main(FloatLayout):
 		self.update_plot(init = True)
 		self.update_info()
 		self.lastmove = highmove
+		self.counting = False
 		Clock.schedule_once(self.player_move_)
 		
 	def player_move_(self, dt):
@@ -288,7 +289,6 @@ class main(FloatLayout):
 			self.handicap_remaining -= 1
 		else:
 			self.fish_move()
-		self.counting = False
 	
 	def end_game(self, result):
 		self.lastmove = ""
@@ -1148,7 +1148,7 @@ if __name__ == '__main__':
 	lock = m.Value(bool, False) # Not that kind of lock
 	timers = m.dict()
 	timers["visit"] = 30
-	timers["alone"] = 6
+	timers["alone"] = 5
 	p1 = Process(target=bot.run)
 	p2 = Process(target=goApp().run)
 	p1.start()
