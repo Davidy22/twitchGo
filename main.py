@@ -72,6 +72,8 @@ class main(FloatLayout):
 		self.is_black = True
 		self.record = db.get_record()
 		self.round = db.get_round_no()
+		self.handicap = db.get_level()
+		self.handicap_remaining = self.handicap
 		
 		self.custom_init()
 		
@@ -141,12 +143,14 @@ class main(FloatLayout):
 				else:
 					self.info_text += "%s's turn" % c["challenger"]
 			else:
-				skill = db.get_level()
-				self.info_text = "Opponent: Katago lvl %d is %s" % (skill, opp_color) # change to stones
+				self.info_text = "Opponent: Katago is %s giving %d handicap stones" % (opp_color, self.handicap) # change to stones
 				self.info_text += "\nEval: {0}".format(self.board_evaluation)
 
 			
 			self.info_text += ", Game %d, W:%d, L:%d" % (self.round, self.record[0], self.record[1])
+			if self.handicap_remaining > 0:
+				self.info_text += "\n%d handicap stones left" % self.handicap_remaining
+
 			if self.countdown > 0:
 				self.countdown -= dt
 				if self.countdown < 0:
@@ -258,7 +262,9 @@ class main(FloatLayout):
 		elif highmove == "pass": #TODO: finish double pass logic
 			if self.lastmove == "pass":
 				self.end_game("d")
+				return
 			else:
+				self.handicap_remaining = 0
 				self.fish.play(self.is_black, highmove)
 				self.update_board()
 				self.evaluate_position()
@@ -277,62 +283,66 @@ class main(FloatLayout):
 		Clock.schedule_once(self.player_move_)
 		
 	def player_move_(self, dt):
-		self.fish_move()
+		print("Handi")
+		print(self.handicap_remaining)
+		if self.handicap_remaining > 0:
+			self.set_legal_moves()
+			self.handicap_remaining -= 1
+		else:
+			self.fish_move()
 		self.counting = False
 	
 	def end_game(self, result):
 		self.lastmove = ""
 		self.board_evaluation = 0
 		votes = total_voted.value
-		skill = db.get_level()
+		self.handicap = db.get_level()
 		if not result in ["a", "d"]:
-			self.log(result, skill, votes)
+			self.log(result, self.handicap, votes)
 		c = custom_game.value
 		if result == "w":
 			if not c is None:
 				if "challenger" in c:
 					payout = 2000
 			else:
-				payout = skill * 200
+				payout = int(pow(0.8, self.handicap) * 2000)
 				
 			for vote in votes:
 				db.change_points(vote, payout)
 			
 			self.update_info(text = "Twitch chat won, %d points awarded to participants" % payout, hold = True)
-			if skill < 10:
-				skill += 1
-				db.set_level(skill)
+			if self.handicap > 0:
+				self.handicap -= 1
+				db.set_level(self.handicap)
 		elif result == "d": # TODO: make this not just copied and pasted win/loss logic
 			temp = self.fish.estimateScore()
 			if (temp[0] == "W" and not self.is_black) or (temp[0] == "B" and self.is_black):
-				self.log("w", skill, votes)
+				self.log("w", self.handicap, votes)
 				if not c is None:
 					if "challenger" in c:
 						payout = 2000
 				else:
-					payout = skill * 200
+					payout = int(pow(0.8, self.handicap) * 2000)
 					
 				for vote in votes:
 					db.change_points(vote, payout)
 				
 				self.update_info(text = "Twitch chat won, %d points awarded to participants" % payout, hold = True)
-				if skill < 10:
-					skill += 1
-					db.set_level(skill)
+				if self.handicap > 0:
+					self.handicap -= 1
+					db.set_level(self.handicap)
 			else:
-				self.log("l", skill, votes)
-				if skill > 1:
-					skill -= 1
-					db.set_level(skill)
+				self.log("l", self.handicap, votes)
+				self.handicap += 1
+				db.set_level(self.handicap)
 				if not c is None and "challenger" in c:
 					db.change_points(c["challenger"], 2500)
 				self.update_info(text = "Twitch chat lost", hold = True)
 		elif result == "a":
 			self.update_info(text = "Game aborted", hold = True)
 		else:
-			if skill > 1:
-				skill -= 1
-				db.set_level(skill)
+			self.handicap += 1
+			db.set_level(self.handicap)
 			if not c is None and "challenger" in c:
 				db.change_points(c["challenger"], 2500)
 			self.update_info(text = "Twitch chat lost", hold = True)
@@ -346,7 +356,10 @@ class main(FloatLayout):
 		self.update_history(reset=True)
 		self.set_legal_moves(end = True)
 		self.last_move = ""
-		if not self.is_black:
+		self.handicap_remaining = self.handicap
+		if self.handicap_remaining > 0:
+			Clock.schedule_once(self.set_legal_moves, 5)
+		elif not self.is_black:
 			self.evaluate_position()
 			c = custom_game.value
 			if not c is None and "challenger" in c:
@@ -442,7 +455,7 @@ class main(FloatLayout):
 			
 		moves["resign"] = 0
 		moves["pass"] = 0
-		
+		print(moves)
 		voted.set(set())
 		vetoed.set(set())
 		

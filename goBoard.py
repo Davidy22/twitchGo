@@ -1,5 +1,6 @@
 from gomill import boards
 from enum import Enum
+from gomill.common import *
 
 class letters(Enum):
 	A = 1
@@ -24,7 +25,7 @@ class letters(Enum):
 	
 class b(boards.Board):
 	def __init__(self):
-		super().__init__(19)
+		super().__init__(5)
 	
 	def list_unoccupied_points(self):
 		"""List all empty points.
@@ -64,3 +65,39 @@ class b(boards.Board):
 		print(color)
 		if not coord.casefold() in ["pass", "resign"]:
 			self.play(self.convertLetter(coord[0].upper())-1, int(coord[1:])-1, color)
+
+	def play(self, row, col, colour):
+		"""Play a move on the board.
+		Raises IndexError if the coordinates are out of range.
+		Raises ValueError if the specified point isn't empty.
+		Performs any necessary captures. Allows self-captures. Doesn't enforce
+		any ko rule.
+		Returns the point forbidden by simple ko, or None
+		"""
+		print("play")
+		if row < 0 or col < 0:
+			raise IndexError
+		opponent = opponent_of(colour)
+		if self.board[row][col] is not None:
+			raise ValueError
+		self.board[row][col] = colour
+		self._is_empty = False
+		surrounded = self._find_surrounded_groups()
+		simple_ko_point = None
+		if surrounded:
+			print("surrounded")
+			print(surrounded)
+			if len(surrounded) == 1:
+				to_capture = surrounded
+				if len(to_capture[0].points) == self.side*self.side:
+					self._is_empty = True
+			else:
+				to_capture = [group for group in surrounded if group.colour == opponent]
+				if len(to_capture) == 1 and len(to_capture[0].points) == 1:
+					self_capture = [group for group in surrounded if group.colour == colour]
+					if len(self_capture[0].points) == 1:
+						(simple_ko_point,) = to_capture[0].points
+			for group in to_capture:
+				for r, c in group.points:
+					self.board[r][c] = None
+		return simple_ko_point

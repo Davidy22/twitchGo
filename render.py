@@ -32,7 +32,7 @@ class DrawGoPosition(object):
 		self.fig = None
 		
 	def convertLetter(self, letter):
-		return letters[letter].value
+		return letters[letter.upper()].value
 	
 	def convertNumber(self, number):
 		return letters(number).name.upper()

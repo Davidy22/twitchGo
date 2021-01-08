@@ -54,7 +54,10 @@ class GoTextPipe(object):
 		return self._send('showboard').strip()
 		
 	def legalMoves(self, color):
-		return self.board.legalMoves(color)
+		if color:
+			return self.board.legalMoves("b")
+		else:
+			return self.board.legalMoves("w")
 	
 	def moveHistory(self):
 		return self._send('printsgf').strip()
