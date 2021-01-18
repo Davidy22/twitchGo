@@ -242,7 +242,7 @@ class main(FloatLayout):
 					else:
 						highmove.append(move)
 		if highvote <= 0:
-			print(voted.value)
+			#print(voted.value)
 			#broadcast(poll_message,"Every move was vetoed, talk it out guys")
 			self.set_legal_moves()
 			self.counting = False
@@ -532,8 +532,8 @@ async def event_ready():
 @bot.event
 async def event_message(ctx):
 	await bot.handle_commands(ctx)
-	#if ctx.author.name == "twitch_plays_go_":
-	#	return
+	if ctx.author.name == "twitch_plays_go_":
+		return
 	if len(ctx.content) > 10:
 		return
 	
@@ -1166,8 +1166,8 @@ if __name__ == '__main__':
 	poll_message = m.Value(list, [])
 	lock = m.Value(bool, False) # Not that kind of lock
 	timers = m.dict()
-	timers["visit"] = 1
-	timers["alone"] = 1
+	timers["visit"] = 20
+	timers["alone"] = 5
 	p1 = Process(target=bot.run)
 	p2 = Process(target=goApp().run)
 	p1.start()
