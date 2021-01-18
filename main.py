@@ -791,16 +791,16 @@ async def command_difficulty(ctx):
 	try:
 		target = int(params[0])
 	except:
-		await ws.send_privmsg("#%s" % ctx.channel, f"/me Difficulty needs to be a number from 1-10.")
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Difficulty needs to be a number from 1-20.")
 		return
 	
-	if target > 10 or target < 1:
-		await ws.send_privmsg("#%s" % ctx.channel, f"/me Difficulty needs to be a number from 1-10.")
+	if target > 20 or target < 1:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Difficulty needs to be a number from 1-20.")
 		return
 	
 	if db.change_points(ctx.author.name, -200):
 		db.add_game_param("level", target, replace = True) # change to stones
-		await ws.send_privmsg("#%s" % ctx.channel, f"/me Katago will be set to level %d next game" % target)
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Katago will give %d extra stones next game" % target)
 	else:
 		await ws.send_privmsg("#%s" % ctx.channel, f"/me %s, you only have %d points, a difficulty change costs 200." % (ctx.author.name, db.get_points(ctx.author.name)))
 
