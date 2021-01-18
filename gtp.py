@@ -23,8 +23,8 @@ class GoTextPipe(object):
 		self.board = b()
 		return self._send('clear_board').strip()
 
-	def estimateScore(self):
-		temp = self.board.area_score() - 0.5
+	def estimateScore(self, handicap = 0):
+		temp = self.board.area_score() - 0.5 - handicap
 		if temp < 0:
 			return "W+{0}".format(abs(temp))
 		else:
@@ -47,7 +47,8 @@ class GoTextPipe(object):
 		return self.board.listStones(color)
 
 	def showboard(self):
-		return self._send('showboard').strip()
+		print(self._send('showboard').strip())
+		print(self.board.board)
 		
 	def legalMoves(self, color):
 		if color:

@@ -106,7 +106,7 @@ class main(FloatLayout):
 		return "[color=000000][size=%d][b]%s[/b][/size][/color]" % (font_size, text)
 	
 	def evaluate_position(self):
-		self.board_evaluation = self.fish.estimateScore()
+		self.board_evaluation = self.fish.estimateScore(self.handicap)
 		
 	def update_history(self, reset = False):		
 		if reset:
@@ -138,18 +138,22 @@ class main(FloatLayout):
 				opp_color = "black"
 			if not c is None and "challenger" in c:
 				self.info_text = "Opponent: %s is %s\n" % (c["challenger"], opp_color)
+				self.info_text += "Eval: {0}, ".format(self.board_evaluation)
 				if not c["turn"]:
 					self.info_text += "Twitch chat's turn"
 				else:
 					self.info_text += "%s's turn" % c["challenger"]
 			else:
-				self.info_text = "Opponent: Katago is %s giving %d handicap stones" % (opp_color, self.handicap) # change to stones
+				self.info_text = "Opponent: Katago is %s giving %d extra stones" % (opp_color, self.handicap)
 				self.info_text += "\nEval: {0}".format(self.board_evaluation)
 
 			
 			self.info_text += ", Game %d, W:%d, L:%d" % (self.round, self.record[0], self.record[1])
+			
+			self.info_text += "\nChinese Rules" # Make dynamic when I add rules options
+			
 			if self.handicap_remaining > 0:
-				self.info_text += "\n%d handicap stones left" % self.handicap_remaining
+				self.info_text += "\n%d extra handicap stones left" % self.handicap_remaining
 
 			if self.countdown > 0:
 				self.countdown -= dt
@@ -238,7 +242,8 @@ class main(FloatLayout):
 					else:
 						highmove.append(move)
 		if highvote <= 0:
-			broadcast(poll_message,"Every move was vetoed, talk it out guys")
+			print(voted.value)
+			#broadcast(poll_message,"Every move was vetoed, talk it out guys")
 			self.set_legal_moves()
 			self.counting = False
 			return
@@ -271,7 +276,11 @@ class main(FloatLayout):
 			self.end_game("a")
 			return
 		else:
-			self.fish.play(self.is_black, highmove)
+			c = custom_game.value
+			if not c is None and "turn" in c:
+				self.fish.play(not c["turn"], highmove)
+			else:
+				self.fish.play(self.is_black, highmove)
 			self.update_board()
 			self.evaluate_position()
 		
@@ -302,17 +311,17 @@ class main(FloatLayout):
 				if "challenger" in c:
 					payout = 2000
 			else:
-				payout = int(pow(0.8, self.handicap) * 2000)
+				payout = int(pow(0.86, self.handicap) * 2000)
 				
 			for vote in votes:
 				db.change_points(vote, payout)
 			
 			self.update_info(text = "Twitch chat won, %d points awarded to participants" % payout, hold = True)
-			if self.handicap > 0:
+			if self.handicap > 0 and c is None:
 				self.handicap -= 1
 				db.set_level(self.handicap)
 		elif result == "d": # TODO: make this not just copied and pasted win/loss logic
-			temp = self.fish.estimateScore()
+			temp = self.fish.estimateScore(self.handicap)
 			if (temp[0] == "W" and not self.is_black) or (temp[0] == "B" and self.is_black):
 				self.log("w", self.handicap, votes)
 				if not c is None:
@@ -325,12 +334,13 @@ class main(FloatLayout):
 					db.change_points(vote, payout)
 				
 				self.update_info(text = "Twitch chat won, %d points awarded to participants" % payout, hold = True)
-				if self.handicap > 0:
+				if self.handicap > 0 and c is None:
 					self.handicap -= 1
 					db.set_level(self.handicap)
 			else:
 				self.log("l", self.handicap, votes)
-				self.handicap += 1
+				if c is None:
+					self.handicap += 1
 				db.set_level(self.handicap)
 				if not c is None and "challenger" in c:
 					db.change_points(c["challenger"], 2500)
@@ -338,7 +348,8 @@ class main(FloatLayout):
 		elif result == "a":
 			self.update_info(text = "Game aborted", hold = True)
 		else:
-			self.handicap += 1
+			if c is None:
+				self.handicap += 1
 			db.set_level(self.handicap)
 			if not c is None and "challenger" in c:
 				db.change_points(c["challenger"], 2500)
@@ -349,11 +360,15 @@ class main(FloatLayout):
 		self.custom_init()
 		self.fish.reset()
 		self.update_plot(init = True)
-		self.is_black = not self.is_black
+		#self.is_black = not self.is_black
 		self.update_history(reset=True)
 		self.set_legal_moves(end = True)
 		self.last_move = ""
-		self.handicap_remaining = self.handicap
+		c = custom_game.value
+		if not c is None and "challenger" in c:
+			self.handicap_remaining = 0
+		else:
+			self.handicap_remaining = self.handicap
 		if self.handicap_remaining > 0:
 			Clock.schedule_once(self.set_legal_moves, 5)
 		elif not self.is_black:
@@ -375,9 +390,9 @@ class main(FloatLayout):
 		vis = visiting.value
 		if not vis is None:
 			if c is None:
-				c = {"challenger":vis}
+				c = {"challenger":vis.casefold()}
 			else:
-				c["challenger"] = vis
+				c["challenger"] = vis.casefold()
 			
 		if c is None:
 			custom_game.set(None)
@@ -436,7 +451,12 @@ class main(FloatLayout):
 	def set_legal_moves(self, end = False):
 		moves.clear()
 		count = 1
-		legal = list(self.fish.legalMoves(self.is_black))
+		
+		c = custom_game.value
+		if not c is None and "turn" in c:
+			legal = list(self.fish.legalMoves(not c["turn"]))
+		else:
+			legal = list(self.fish.legalMoves(self.is_black))
 		legal.sort(key=self.movekey)
 		
 		#vips = db.get_vip_list()
@@ -478,7 +498,7 @@ class main(FloatLayout):
 			labels.append(i[0])
 			quantity.append(i[1])
 		
-		if labels[0] == "abort":
+		if labels[0].casefold() == "abort":
 			Clock.schedule_once(self.player_move)
 			return
 		
@@ -512,8 +532,8 @@ async def event_ready():
 @bot.event
 async def event_message(ctx):
 	await bot.handle_commands(ctx)
-	if ctx.author.name == "twitch_plays_go_":
-		return
+	#if ctx.author.name == "twitch_plays_go_":
+	#	return
 	if len(ctx.content) > 10:
 		return
 	
@@ -1146,8 +1166,8 @@ if __name__ == '__main__':
 	poll_message = m.Value(list, [])
 	lock = m.Value(bool, False) # Not that kind of lock
 	timers = m.dict()
-	timers["visit"] = 30
-	timers["alone"] = 5
+	timers["visit"] = 1
+	timers["alone"] = 1
 	p1 = Process(target=bot.run)
 	p2 = Process(target=goApp().run)
 	p1.start()
