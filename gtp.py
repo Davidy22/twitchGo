@@ -10,18 +10,24 @@ class FailedCommand(Exception):
 
 
 class GoTextPipe(object):
-	def __init__(self):
-		self.board = b()
+	def __init__(self, size):
+		self.board = b(size)
 		args = './katago gtp'
 		self.engine = subprocess.Popen(args.split(), universal_newlines=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, encoding="utf8")
+		self.boardsize(size)
 		#self._send('boardsize 5')
 
 	def boardsize(self, size):
 		return self._send('boardsize {0}'.format(size)).strip()
 
-	def clearBoard(self):
-		self.board = b()
-		return self._send('clear_board').strip()
+	def clearBoard(self, size = None):
+		if size is None:
+			self.board = b()
+			return self._send('clear_board').strip()
+		else:
+			self.board = b(size)
+			self.boardsize(size)
+			return self._send('clear_board').strip()
 
 	def estimateScore(self, handicap = 0):
 		temp = self.board.area_score() - 0.5 - handicap
@@ -85,8 +91,8 @@ class GoTextPipe(object):
 			raise BrokenPipeError()
 		return self.engine.stdout.readline().strip()
 	
-	def reset(self) -> None:
-		self.clearBoard()
+	def reset(self, size = None) -> None:
+		self.clearBoard(size)
 
 	def close(self):
 		self.engine.communicate('quit\n')

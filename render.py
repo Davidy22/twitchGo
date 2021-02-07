@@ -37,7 +37,7 @@ class DrawGoPosition(object):
 	def convertNumber(self, number):
 		return letters(number).name.upper()
 	
-	def draw(self, black, white, lastmove = None):
+	def draw(self, black, white, lastmove = None, size = 19):
 		if not self.fig is None:
 			plt.close()
 		# create a 8" x 8" board
@@ -46,10 +46,10 @@ class DrawGoPosition(object):
 		ax = self.fig.add_subplot(111)
 
 		# draw the grid
-		for x in range(19):
-			ax.plot([x, x], [0,18], 'k')
-		for y in range(19):
-			ax.plot([0, 18], [y,y], 'k')
+		for x in range(size):
+			ax.plot([x, x], [0,size-1], 'k')
+		for y in range(size):
+			ax.plot([0, size-1], [y,y], 'k')
 
 		# scale the axis area to fill the whole figure
 		#ax.set_position([0,0,1,1])
@@ -58,21 +58,22 @@ class DrawGoPosition(object):
 		ax.set_axis_off()
 
 		# scale the plot area conveniently (the board is in 0,0..18,18)
-		ax.set_xlim(-1,19)
-		ax.set_ylim(-1,19)
+		ax.set_xlim(-1,size)
+		ax.set_ylim(-1,size)
 		
 		# label coords
-		for i in range(1,20):
-			ax.text(-0.8, i - 1.14, i, horizontalalignment = "center")
-			ax.text(18.8, i - 1.14, i, horizontalalignment = "center")
+		for i in range(1,size+1):
+			ax.text(-0.85 + ((19-size)/27), i - 1.14, i, horizontalalignment = "center")
+			ax.text(size - 0.15 - ((19-size)/27), i - 1.14, i, horizontalalignment = "center")
 			
-			ax.text(i-1.14, -0.9, self.convertNumber(i))
-			ax.text(i-1.14, 18.6, self.convertNumber(i))
+			ax.text(i-1.04, -0.9 + ((19-size)/30), self.convertNumber(i))
+			ax.text(i-1.04, size - 0.3 - ((19-size)/35), self.convertNumber(i))
 		
 		# draw dots
-		for i in [15, 9, 3]:
-			for j in [15, 9, 3]:
-				ax.plot(i,j,'o',markersize=7, markerfacecolor='k', markeredgewidth=0)
+		if size == 19:
+			for i in [15, 9, 3]:
+				for j in [15, 9, 3]:
+					ax.plot(i,j,'o',markersize=7, markerfacecolor='k', markeredgewidth=0)
 		
 		if not lastmove is None and not lastmove.casefold() in ["pass", "resign", ""]:
 			ax.plot(self.convertLetter(lastmove[0])-1, int(lastmove[1:])-1,'o',markersize=23, markerfacecolor='b', markeredgewidth=0)
@@ -81,13 +82,13 @@ class DrawGoPosition(object):
 		for i in white:
 			if i == "":
 				continue
-			ax.plot(self.convertLetter(i[0])-1,int(i[1:])-1,'o',markersize=18, markeredgecolor=(0,0,0), markerfacecolor='w', markeredgewidth=1.4)
+			ax.plot(self.convertLetter(i[0])-1,int(i[1:])-1,'o',markersize= 37 - size, markeredgecolor=(0,0,0), markerfacecolor='w', markeredgewidth=1.4)
 
 		# draw black stones
 		for i in black:
 			if i == "":
 				continue
-			ax.plot(self.convertLetter(i[0])-1,int(i[1:])-1,'o',markersize=18, markeredgecolor=(.5,.5,.5), markerfacecolor='k', markeredgewidth=1.4)
+			ax.plot(self.convertLetter(i[0])-1,int(i[1:])-1,'o',markersize= 37 - size, markeredgecolor=(.5,.5,.5), markerfacecolor='k', markeredgewidth=1.4)
 		
 		self.buf.close()
 		self.buf = io.BytesIO()

@@ -34,8 +34,8 @@ class _Group(object):
 
 
 class b(boards.Board):
-	def __init__(self):
-		super().__init__(19)
+	def __init__(self, size):
+		super().__init__(size)
 		self.ko = None
 	
 	def list_unoccupied_points(self):

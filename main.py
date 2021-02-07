@@ -56,6 +56,7 @@ class main(FloatLayout):
 		self.hold_message_ticks = 0
 		self.lastmove = None
 		self.board_evaluation = 0
+		self.boardsize = 19
 		
 		#init from file
 		#self.stats = configparser.ConfigParser()
@@ -64,7 +65,7 @@ class main(FloatLayout):
 		
 		self.render = kiImage(pos = (-285,-85), height=900, allow_stretch = True, size_hint_y = None)
 		self.add_widget(self.render)
-		self.fish = gtp.GoTextPipe()
+		self.fish = gtp.GoTextPipe(self.boardsize)
 		self.renderer = render.DrawGoPosition()
 		self.moves_string = ""
 		#self.board.set_fen("4r1k1/B4p2/PPPPPPPP/bpbbbpbp/PPPPPPPP/1P2P2P/4q3/6K1 b - - 8 43")
@@ -77,6 +78,7 @@ class main(FloatLayout):
 		
 		self.custom_init()
 		
+		
 		self.update_board()
 		
 		self.move_ranks = kiImage(pos = (210,223))
@@ -86,7 +88,7 @@ class main(FloatLayout):
 		self.info = Label(text = self.info_text, size_hint_y = 1, size_hint_x = 1, markup = True, text_size = (545, 200), pos = (370, -15), valign = "top")
 		self.add_widget(self.info)
 		
-		self.move_options = Label(text = self.moves_string, markup = True, text_size = (545, 500), pos = (362, -385), valign = "top")
+		self.move_options = Label(text = self.moves_string, markup = True, text_size = (545, 500), pos = (362, -445), valign = "top")
 		self.add_widget(self.move_options)
 		
 		self.set_legal_moves()
@@ -165,7 +167,7 @@ class main(FloatLayout):
 			self.info.text = self.format_text(text, font_size = 22)
 	
 	def update_board(self):
-		image = self.renderer.draw(self.fish.listStones("b"), self.fish.listStones("w"), lastmove = self.lastmove)
+		image = self.renderer.draw(self.fish.listStones("b"), self.fish.listStones("w"), lastmove = self.lastmove, size = self.boardsize)
 		data = BytesIO()
 		image.save(data, format='png')
 		data.seek(0)
@@ -187,6 +189,26 @@ class main(FloatLayout):
 		
 		if init:
 			pyplot.close()
+	
+	def pass_all(self, dt = 0):
+		self.update_history()
+		self.thinking_label.pos = (735, 180)
+		if self.is_black:
+			self.lastmove = self.fish.genmove("w")
+		else:
+			self.lastmove = self.fish.genmove("b")
+		broadcast(poll_message,"Katago went %s" % self.lastmove)
+		self.update_board()
+		self.update_history()
+		if self.lastmove == "resign":
+			self.set_legal_moves()
+			self.thinking_label.pos = (6000, 180)
+			Clock.schedule_once(self.fish_move__, 3)
+		elif self.lastmove == "pass":
+			self.thinking_label.pos = (6000, 180)
+			self.end_game("d")
+		else:
+			Clock.schedule_once(self.pass_all)
 
 	def fish_move(self):
 		c = custom_game.value
@@ -222,6 +244,7 @@ class main(FloatLayout):
 		self.thinking_label.pos = (6000, 180)
 	
 	def fish_move__(self, dt):
+		self.thinking_label.pos = (6000, 180)
 		self.end_game("w")
 	
 	def player_move(self, dt):
@@ -246,6 +269,7 @@ class main(FloatLayout):
 			#broadcast(poll_message,"Every move was vetoed, talk it out guys")
 			self.set_legal_moves()
 			self.counting = False
+			self.update_plot(init = True)
 			return
 		
 		if type(highmove) == list:
@@ -263,7 +287,7 @@ class main(FloatLayout):
 			else:
 				self.end_game("l")
 			return
-		elif highmove == "pass": #TODO: finish double pass logic
+		elif highmove == "pass": # write pass until end
 			if self.lastmove == "pass":
 				self.end_game("d")
 				return
@@ -274,6 +298,12 @@ class main(FloatLayout):
 				self.evaluate_position()
 		elif highmove == "abort":
 			self.end_game("a")
+			return
+		elif highmove == "passall":
+			self.pass_all()
+			self.counting = False
+			self.set_legal_moves()
+			self.update_plot(init = True)
 			return
 		else:
 			c = custom_game.value
@@ -358,13 +388,13 @@ class main(FloatLayout):
 		total_voted.set(set())
 			
 		self.custom_init()
-		self.fish.reset()
+		c = custom_game.value
+		
 		self.update_plot(init = True)
 		#self.is_black = not self.is_black
 		self.update_history(reset=True)
 		self.set_legal_moves(end = True)
 		self.last_move = ""
-		c = custom_game.value
 		if not c is None and "challenger" in c:
 			self.handicap_remaining = 0
 		else:
@@ -404,6 +434,13 @@ class main(FloatLayout):
 		
 		if "color" in c:
 			self.is_black = (c["color"] == "w")
+			
+		if "board" in c:
+			self.boardsize = int(c["board"])
+			self.fish.reset(self.boardsize)
+		else:
+			self.boardsize = 19
+			self.fish.reset(19)
 		
 		# custom mode
 		custom_game.set(c)
@@ -459,19 +496,20 @@ class main(FloatLayout):
 			legal = list(self.fish.legalMoves(self.is_black))
 		legal.sort(key=self.movekey)
 		
-		#vips = db.get_vip_list()
-		#self.moves_string = self.format_text("VIP leaderboard, use !vip to climb", font_size=30)
-		#temp = ""
-		#for i in range(7):
-		#	temp += "\n%d. %s - %d points" % (vips[i][2], vips[i][0], vips[i][1])
-		#self.moves_string += self.format_text(temp, font_size = 21)
-		#self.move_options.text = self.moves_string
+		vips = db.get_vip_list()
+		self.moves_string = self.format_text("VIP leaderboard, use !vip to climb", font_size=30)
+		temp = ""
+		for i in range(5):
+			temp += "\n%d. %s - %d points" % (vips[i][2], vips[i][0], vips[i][1])
+		self.moves_string += self.format_text(temp, font_size = 21)
+		self.move_options.text = self.moves_string
 		
 		for move in legal:
 			moves[move.casefold()] = 0
 			
 		moves["resign"] = 0
 		moves["pass"] = 0
+		moves["passall"] = 0
 		voted.set(set())
 		vetoed.set(set())
 		
@@ -553,10 +591,7 @@ async def event_message(ctx):
 					
 					await bot.event_announcenow("%s has gone with move %s." % (c["challenger"], ctx.content))
 					
-					if ctx.content in moves:
-						moves[ctx.content] += 1
-					else:
-						moves[processed] += 1
+					moves[processed] += 1
 					db.change_points(ctx.author.name, 2)
 					votes.add(ctx.author.name)
 					voted.set(votes)
@@ -589,10 +624,7 @@ async def event_message(ctx):
 				timer = timers["visit"]
 			await bot.event_announcenow("The first vote has been cast, a move will be made in %d seconds" % timer)
 		
-		if ctx.content in moves:
-			moves[ctx.content] += db.get_player_level(ctx.author.name)
-		else:
-			moves[processed] += db.get_player_level(ctx.author.name)
+		moves[processed] += db.get_player_level(ctx.author.name)
 		db.change_points(ctx.author.name, 2)
 		votes.add(ctx.author.name)
 		voted.set(votes)
@@ -605,7 +637,11 @@ async def event_message(ctx):
 			else:
 				await asyncio.sleep(timers["visit"])
 			await bot.event_announce()
-			for i in range(20):
+			if processed == "passall":
+				tick = 60
+			else:
+				tick = 15
+			for i in range(tick):
 				await asyncio.sleep(1)
 				await bot.event_announce()
 
@@ -638,6 +674,31 @@ async def event_log(ctx):
 	else:
 		for line in wrap(history.value, 490):
 			await ws.send_privmsg("#%s" % ctx.channel, f"/me %s" % line)
+
+
+@bot.command(name="board")
+async def command_board(ctx):
+	ws = bot._ws
+	params = get_params(ctx.content)
+	try:
+		delta = int(params[0])
+		
+		if delta > 19:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me Cannot choose a board larger than 19x19")
+			return
+		if delta < 9:
+			await ws.send_privmsg("#%s" % ctx.channel, f"/me Cannot choose a board smaller than 9x9")
+			return
+	except:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me You must choose a number for board size")
+		return
+	
+	if db.change_points(ctx.author.name, -50):
+		db.add_game_param("board", params[0], replace = True)
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me Custom starting board set for next game.")
+	else:
+		await ws.send_privmsg("#%s" % ctx.channel, f"/me %s, you only have %d points, a custom start costs 50." % (ctx.author.name, db.get_points(ctx.author.name)))
+
 
 @bot.command(name="log")
 async def command_log(ctx):
