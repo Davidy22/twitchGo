@@ -703,11 +703,8 @@ async def command_board(ctx):
 		await ws.send_privmsg("#%s" % ctx.channel, f"/me You must choose a number for board size")
 		return
 	
-	if db.change_points(ctx.author.name, -50):
-		db.add_game_param("board", params[0], replace = True)
-		await ws.send_privmsg("#%s" % ctx.channel, f"/me Custom starting board set for next game.")
-	else:
-		await ws.send_privmsg("#%s" % ctx.channel, f"/me %s, you only have %d points, a custom start costs 50." % (ctx.author.name, db.get_points(ctx.author.name)))
+	db.add_game_param("board", params[0], replace = True)
+	await ws.send_privmsg("#%s" % ctx.channel, f"/me Custom starting board set for next game.")
 
 
 @bot.command(name="log")
