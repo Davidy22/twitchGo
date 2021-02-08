@@ -156,6 +156,8 @@ class main(FloatLayout):
 			
 			if self.handicap_remaining > 0:
 				self.info_text += "\n%d extra handicap stones left" % self.handicap_remaining
+			if self.handicap_remaining == 0:
+				self.info_text += "\nTwitch chat's first regular move"
 
 			if self.countdown > 0:
 				self.countdown -= dt
@@ -292,7 +294,7 @@ class main(FloatLayout):
 				self.end_game("d")
 				return
 			else:
-				self.handicap_remaining = 0
+				self.handicap_remaining = -1
 				self.fish.play(self.is_black, highmove)
 				self.evaluate_position()
 		elif highmove == "abort":
@@ -332,6 +334,8 @@ class main(FloatLayout):
 			self.handicap_remaining -= 1
 		else:
 			self.fish_move()
+			if self.handicap_remaining == 0:
+				self.handicap_remaining = -1
 		self.counting = False
 	
 	def end_game(self, result):
