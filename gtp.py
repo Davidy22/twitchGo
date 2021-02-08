@@ -34,8 +34,8 @@ class GoTextPipe(object):
 			self.boardsize(size)
 			return self._send('clear_board').strip()
 
-	def estimateScore(self, handicap = 0):
-		temp = self.board.area_score() - 0.5 - handicap
+	def estimateScore(self, handicap = 0, boardsize = 19):
+		temp = self.board.area_score() - 0.5 - int(handicap / 19 * boardsize)
 		if temp < 0:
 			return "W+{0}".format(abs(temp))
 		else:

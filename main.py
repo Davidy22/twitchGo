@@ -108,7 +108,7 @@ class main(FloatLayout):
 		return "[color=000000][size=%d][b]%s[/b][/size][/color]" % (font_size, text)
 	
 	def evaluate_position(self):
-		self.board_evaluation = self.fish.estimateScore(self.handicap)
+		self.board_evaluation = self.fish.estimateScore(self.handicap, self.boardsize)
 		
 	def update_history(self, reset = False):		
 		if reset:
@@ -350,6 +350,8 @@ class main(FloatLayout):
 			if not c is None:
 				if "challenger" in c:
 					payout = 2000
+				else:
+					payout = int(pow(0.86, self.handicap) * 2000)
 			else:
 				payout = int(pow(0.86, self.handicap) * 2000)
 				
