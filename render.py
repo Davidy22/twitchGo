@@ -76,7 +76,7 @@ class DrawGoPosition(object):
 					ax.plot(i,j,'o',markersize=7, markerfacecolor='k', markeredgewidth=0)
 		
 		if not lastmove is None and not lastmove.casefold() in ["pass", "resign", ""]:
-			ax.plot(self.convertLetter(lastmove[0])-1, int(lastmove[1:])-1,'o',markersize=23, markerfacecolor='b', markeredgewidth=0)
+			ax.plot(self.convertLetter(lastmove[0])-1, int(lastmove[1:])-1,'o',markersize= 42 - size, markerfacecolor='b', markeredgewidth=0)
 		
 		# draw white stones
 		for i in white:

@@ -294,30 +294,36 @@ class main(FloatLayout):
 			else:
 				self.handicap_remaining = 0
 				self.fish.play(self.is_black, highmove)
-				self.update_board()
 				self.evaluate_position()
 		elif highmove == "abort":
 			self.end_game("a")
 			return
 		elif highmove == "passall":
-			self.pass_all()
-			self.counting = False
-			self.set_legal_moves()
-			self.update_plot(init = True)
-			return
+			if self.fish.get_turn() > 15:
+				self.pass_all()
+				self.counting = False
+				self.set_legal_moves()
+				self.update_plot(init = True)
+				return
+			else:
+				broadcast(poll_message,"Cannot use passall before 15th move")
+				self.set_legal_moves()
+				self.update_plot(init = True)
+				self.counting = False
+				return
 		else:
 			c = custom_game.value
 			if not c is None and "turn" in c:
 				self.fish.play(not c["turn"], highmove)
 			else:
 				self.fish.play(self.is_black, highmove)
-			self.update_board()
 			self.evaluate_position()
 		
 		self.update_history()
 		self.update_plot(init = True)
 		self.update_info()
 		self.lastmove = highmove
+		self.update_board()
 		Clock.schedule_once(self.player_move_)
 		
 	def player_move_(self, dt):
@@ -497,7 +503,7 @@ class main(FloatLayout):
 		legal.sort(key=self.movekey)
 		
 		vips = db.get_vip_list()
-		self.moves_string = self.format_text("VIP leaderboard, use !vip to climb", font_size=30)
+		self.moves_string = self.format_text("VIP leaderboard, use !vip to climb", font_size=26)
 		temp = ""
 		for i in range(5):
 			temp += "\n%d. %s - %d points" % (vips[i][2], vips[i][0], vips[i][1])
