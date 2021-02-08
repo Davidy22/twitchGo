@@ -146,7 +146,7 @@ class main(FloatLayout):
 				else:
 					self.info_text += "%s's turn" % c["challenger"]
 			else:
-				self.info_text = "Opponent: Katago is %s giving %d extra stones" % (opp_color, self.handicap)
+				self.info_text = "Opponent: Katago is %s giving %d extra stones" % (opp_color, int(self.handicap * 19 / self.boardsize))
 				self.info_text += "\nEval: {0}".format(self.board_evaluation)
 
 			
@@ -408,7 +408,7 @@ class main(FloatLayout):
 		if not c is None and "challenger" in c:
 			self.handicap_remaining = 0
 		else:
-			self.handicap_remaining = self.handicap
+			self.handicap_remaining = int(self.handicap * 19 / self.boardsize)
 		if self.handicap_remaining > 0:
 			Clock.schedule_once(self.set_legal_moves, 5)
 		elif not self.is_black:
