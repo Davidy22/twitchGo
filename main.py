@@ -369,6 +369,8 @@ class main(FloatLayout):
 				if not c is None:
 					if "challenger" in c:
 						payout = 2000
+					else:
+						payout = int(pow(0.8, self.handicap) * 2000)
 				else:
 					payout = int(pow(0.8, self.handicap) * 2000)
 					
@@ -450,9 +452,6 @@ class main(FloatLayout):
 		if "board" in c:
 			self.boardsize = int(c["board"])
 			self.fish.reset(self.boardsize)
-		else:
-			self.boardsize = 19
-			self.fish.reset(19)
 		
 		# custom mode
 		custom_game.set(c)

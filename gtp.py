@@ -82,8 +82,6 @@ class GoTextPipe(object):
 			result.append(data.rstrip())
 
 		result = '\n'.join(result)
-		if len(result) == 0:
-			return result
 		if result[0] == '?':
 			raise FailedCommand(result)
 
