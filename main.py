@@ -62,6 +62,7 @@ class main(FloatLayout):
 		#self.stats = configparser.ConfigParser()
 		#temp = open("game.log")
 		#self.stats.read_file(temp)
+		self.custom_init()
 		
 		self.render = kiImage(pos = (-285,-85), height=900, allow_stretch = True, size_hint_y = None)
 		self.add_widget(self.render)
@@ -74,9 +75,9 @@ class main(FloatLayout):
 		self.record = db.get_record()
 		self.round = db.get_round_no()
 		self.handicap = db.get_level()
-		self.handicap_remaining = self.handicap
+		self.handicap_remaining = self.handicap_remaining = int(self.handicap / 19 * self.boardsize)
 		
-		self.custom_init()
+		
 		
 		
 		self.update_board()
@@ -405,6 +406,7 @@ class main(FloatLayout):
 		c = custom_game.value
 		
 		self.update_plot(init = True)
+		self.fish.reset(self.boardsize)
 		#self.is_black = not self.is_black
 		self.update_history(reset=True)
 		self.set_legal_moves(end = True)
@@ -451,7 +453,7 @@ class main(FloatLayout):
 			
 		if "board" in c:
 			self.boardsize = int(c["board"])
-			self.fish.reset(self.boardsize)
+			
 		
 		# custom mode
 		custom_game.set(c)
@@ -1236,7 +1238,7 @@ if __name__ == '__main__':
 	lock = m.Value(bool, False) # Not that kind of lock
 	timers = m.dict()
 	timers["visit"] = 20
-	timers["alone"] = 5
+	timers["alone"] = 20
 	p1 = Process(target=bot.run)
 	p2 = Process(target=goApp().run)
 	p1.start()
