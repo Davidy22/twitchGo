@@ -414,7 +414,7 @@ class main(FloatLayout):
 		if not c is None and "challenger" in c:
 			self.handicap_remaining = 0
 		else:
-			self.handicap_remaining = int(self.handicap / 19 * self.boardsize)
+			self.handicap_remaining = int(self.handicap / 19 * self.boardsize) - 1
 		if self.handicap_remaining > 0:
 			Clock.schedule_once(self.set_legal_moves, 5)
 		elif not self.is_black:
@@ -582,7 +582,10 @@ async def event_ready():
 
 @bot.event
 async def event_message(ctx):
-	await bot.handle_commands(ctx)
+	try:
+		await bot.handle_commands(ctx)
+	except:
+		pass
 	if ctx.author.name == "twitch_plays_go_":
 		return
 	if len(ctx.content) > 10:
@@ -1167,6 +1170,11 @@ async def command_lock(ctx):
 		await ws.send_privmsg("#%s" % ctx.channel, f"/me Bot channel locked")
 	else:
 		await ws.send_privmsg("#%s" % ctx.channel, f"/me Bot channel unlocked")
+
+@bot.command(name="voice")
+async def command_lock(ctx):
+	ws = bot._ws
+	await ws.send_privmsg("#%s" % ctx.channel, f"/me Join the voice chat discord at ") # TODO: Get the link invite.gg
 
 @bot.command(name="leaderboard")
 async def command_leaderboard(ctx):

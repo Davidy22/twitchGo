@@ -76,19 +76,19 @@ class DrawGoPosition(object):
 					ax.plot(i,j,'o',markersize=7, markerfacecolor='k', markeredgewidth=0)
 		
 		if not lastmove is None and not lastmove.casefold() in ["pass", "resign", ""]:
-			ax.plot(self.convertLetter(lastmove[0])-1, int(lastmove[1:])-1,'o',markersize= 42 - size, markerfacecolor='b', markeredgewidth=0)
+			ax.plot(self.convertLetter(lastmove[0])-1, int(lastmove[1:])-1,'o',markersize= 43 - size, markerfacecolor='b', markeredgewidth=0)
 		
 		# draw white stones
 		for i in white:
 			if i == "":
 				continue
-			ax.plot(self.convertLetter(i[0])-1,int(i[1:])-1,'o',markersize= 37 - size, markeredgecolor=(0,0,0), markerfacecolor='w', markeredgewidth=1.4)
+			ax.plot(self.convertLetter(i[0])-1,int(i[1:])-1,'o',markersize= 38 - size, markeredgecolor=(0,0,0), markerfacecolor='w', markeredgewidth=1.4)
 
 		# draw black stones
 		for i in black:
 			if i == "":
 				continue
-			ax.plot(self.convertLetter(i[0])-1,int(i[1:])-1,'o',markersize= 37 - size, markeredgecolor=(.5,.5,.5), markerfacecolor='k', markeredgewidth=1.4)
+			ax.plot(self.convertLetter(i[0])-1,int(i[1:])-1,'o',markersize= 38 - size, markeredgecolor=(.5,.5,.5), markerfacecolor='k', markeredgewidth=1.4)
 		
 		self.buf.close()
 		self.buf = io.BytesIO()
